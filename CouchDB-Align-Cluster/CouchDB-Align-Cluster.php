@@ -6,6 +6,7 @@ $COUCHUSER = "admin";
 $COUCHPASSWORD = "";
 $COUCHDATABASE = "";
 
+if (file_exists("./config.php")) { include "./config.php"; }
 
 ###############
 ## General Shit
