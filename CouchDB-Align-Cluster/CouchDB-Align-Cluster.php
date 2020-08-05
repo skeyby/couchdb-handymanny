@@ -69,10 +69,11 @@ $response = \Httpful\Request::get($COUCHURL.$COUCHDATABASE)->send();
 if (! isset($response->body->db_name) OR
 	! isset($response->body->cluster)) {
 	e("[!] Error fetching details about the DB");
+	print_r($response->body);
 	die();
 }
 $CouchDB_Database = $response->body;
-e("[*] ".$COUCHDATABASE." size is ".$CouchDB_Database->sizes->file." bytes. It's currently divided in ".$CouchDB_Database->cluster->q." shards on ".$CouchDB_Database->cluster->n." nodes");
+e("[*] ".$COUCHDATABASE." size is ".$CouchDB_Database->doc_count." docs (".$CouchDB_Database->sizes->file." bytes) big. It's currently divided in ".$CouchDB_Database->cluster->q." shards on ".$CouchDB_Database->cluster->n." nodes");
 if (count($CouchDB_Nodes) != $CouchDB_Database->cluster->n) {
 	e("[*] The cluster nodes count (".count($CouchDB_Nodes).") and the db nodes count (".$CouchDB_Database->cluster->n.") is currently different!");	
 } else {
@@ -82,6 +83,7 @@ if (count($CouchDB_Nodes) != $CouchDB_Database->cluster->n) {
 $response = \Httpful\Request::get($COUCHURL.$COUCHDATABASE."/_shards")->send();
 if (! isset($response->body->shards)) {
 	e("[!] Could not get the current shards layout!");
+	print_r($response->body);
 	die();
 }
 
@@ -124,8 +126,25 @@ if (! isset($response->body->changelog) OR
 	! isset($response->body->by_node) OR
 	! isset($response->body->by_range)) {
 	e("[!] Problem parsing the metadata, bailing out!");
+	print_r($reponse->body);
+	die();
 }
 $Metadatas = clone $response->body;
+
+e("[*] Fetching permissions for ".$COUCHDATABASE);
+$response = \Httpful\Request::get($COUCHURL."/".$COUCHDATABASE."/_security")->send();
+if (! isset($response->body) OR
+	! isset($response->body->members) OR
+	! isset($response->body->admins)) {
+	e("[!] Problem parsing the security, bailing out!");
+	print_r($reponse->body);
+	die();
+}
+$DBSecurity = clone $response->body;
+
+e("[*] Current permissions layout");
+print_r($DBSecurity);
+
 
 foreach ($EmptyNodes as $eachNode) {
 	foreach ($PopulatedShards as $eachShard) {
@@ -165,12 +184,38 @@ $response = \Httpful\Request::put($COUCHURL."_node/_local/_dbs/".$COUCHDATABASE)
                         ->body($Metadatas)
                         ->send();
 
-print_r($response->body);
+if (isset($response->body->ok) && $response->body->ok == 1)
+	e("[*] Metadatas Updated.");
+else {
+	print_r($response->body);
+	die("[!] Cannot update metadatas");
+}
+sleep(1);
 
 e("[*] Asking for Shard Synchronization!");
 $response = \Httpful\Request::post($COUCHURL.$COUCHDATABASE."/_sync_shards")
                         ->sendsJson()
                         ->send();
 
-print_r($response->body);
+if (isset($response->body->ok) && $response->body->ok == 1)
+	e("[*] Shard Synchronized.");
+else {
+	print_r($response->body);
+	die("[!] Cannot synchronize shards");
+}
+sleep(1);
+
+e("[*] Reappling permissions to database!");
+
+$response = \Httpful\Request::put($COUCHURL."/".$COUCHDATABASE."/_security")
+                        ->sendsJson()
+                        ->body($DBSecurity)
+                        ->send();
+
+if (isset($response->body->ok) && $response->body->ok == 1)
+	e("[*] DB Granted.");
+else {
+	print_r($response->body);
+	die("[!] Cannot grant database");
+}
 

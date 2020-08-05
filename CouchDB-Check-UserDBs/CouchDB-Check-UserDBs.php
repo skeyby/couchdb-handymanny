@@ -4,7 +4,7 @@
 $COUCHURL = "http://";
 $COUCHUSER = "admin";
 $COUCHPASSWORD = "";
-$startKey = "org.couchdb.user:RAIMNL01C41F839Z";
+$startKey = "org.couchdb.user:DGRLNT68P44Z129C";
 
 if (file_exists("./config.php")) { include "./config.php"; }
 
@@ -86,7 +86,7 @@ for ($Users = 0; $Users < $MaxUsers; $Users++) {
 				e("[!!-] Bbbbboing...");
 				sleep(3);
 			} else {
-				print_r($response);
+				print_r($response->body);
 				die("[!] Cannot create database");
 			}
 		}
@@ -105,7 +105,7 @@ for ($Users = 0; $Users < $MaxUsers; $Users++) {
         if (isset($response->body->ok) && $response->body->ok == 1)
 			e("[!--] DB Granted.");
 		else {
-			print_r($response);
+			print_r($response->body);
 			die("[!] Cannot grant database");
 		}
 
