@@ -4,6 +4,9 @@
 require __DIR__ . '/vendor/autoload.php';
 require __DIR__ . '/CouchDB-Connector.php';
 
+if(!defined("STDIN")) {
+    define("STDIN", fopen('php://stdin','rb'));
+}
 
 use splitbrain\phpcli\CLI;
 use splitbrain\phpcli\Colors;
@@ -67,6 +70,7 @@ class CouchDB_HandleDBs extends CLI
         } else {
             switch ($options->getCmd()) {
                 case 'ping-couchdb':
+                    $this->pingDB($url, $username, $password);
                     break;
                 case 'details-db':
                     $database = trim($options->getOpt('database'));
@@ -74,13 +78,16 @@ class CouchDB_HandleDBs extends CLI
                         $this->error('No target database specified (--database)');
                     } else {
                         $this->pingDB($url, $username, $password);
-                        $this->detailDB($url, $username, $password, $database);
-                        $this->detailDBShards($url, $username, $password, $database);
-                        $this->detailDBPermissions($url, $username, $password, $database);
+                        $this->fullDetailsDB($url, $username, $password, $database);
                     }
                     break;
                 case 'create-db':
-                    $this->success('The foo command was called');
+                    $database = trim($options->getOpt('database'));
+                    if (!is_string($database) OR strlen($database) == 0) {
+                        $this->error('No target database specified (--database)');
+                    } else {
+                        $this->createDB($url, $username, $password, $database, NULL, NULL);
+                    }
                     break;
                 case 'delete-db':
                     $database = trim($options->getOpt('database'));
@@ -117,6 +124,12 @@ class CouchDB_HandleDBs extends CLI
 
         echo PHP_EOL;
 
+    }
+
+    protected function fullDetailsDB($url, $username, $password, $database) {
+        $this->detailDB($url, $username, $password, $database);
+        $this->detailDBShards($url, $username, $password, $database);
+        $this->detailDBPermissions($url, $username, $password, $database);
     }
 
 
@@ -299,18 +312,56 @@ class CouchDB_HandleDBs extends CLI
 
         $this->info('Deleting database '.$database.' on '.$url);
 
+        $this->detailDB($url, $username, $password, $database);
+
         $CouchDB_C = new CouchDB_Connector($url, $username, $password);
-        $status = $CouchDB_C->deleteDB($database);
+
+        $this->alert("Proceed with deletion? (yes/no): ");
+        $answer = fread(STDIN, 80);
+        if (trim(strtolower($answer)) == "yes") {
+
+            $status = $CouchDB_C->deleteDB($database);
+
+            if ($status === true) {
+                $this->success('Database '.$database.' deleted on '.$url);
+            } else {
+                if (is_string($status)) {
+                    $this->error($status);
+                } else {
+                    $this->error('Unknown error deleting database');
+                }
+            }
+        } else {
+            $this->error('Operation cancelled');
+        }
+
+    }
+
+
+    /** Function to create a database on a remote server **/
+    protected function createDB($url, $username, $password, $database, $grantAdmin, $grantMembers) {
+
+        $this->pingDB($url, $username, $password);
+
+        $this->info('Creating database '.$database.' on '.$url);
+
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+
+        $status = $CouchDB_C->createDB($database);
 
         if ($status === true) {
-            $this->success('Database '.$database.' deleted on '.$url);
+            $this->success('Database '.$database.' created on '.$url);
         } else {
             if (is_string($status)) {
                 $this->error($status);
             } else {
-                $this->error('Unknown error deleting database');
+                $this->error('Unknown error creating database');
             }
         }
+
+        $this->info('Appling grants to database '.$database.' on '.$url);
+
+        $this->fullDetailsDB($url, $username, $password, $database);
 
     }
 

@@ -101,4 +101,20 @@ class CouchDB_Connector {
 	}
 
 
+	function createDB($database) {
+
+		$response = \Httpful\Request::put($this->CouchURL.$database)->sendsJson()->send();
+
+		if (! isset($response->body->ok) OR ($response->body->ok != true)) {
+			if (isset($response->body->error) && isset($response->body->reason)) {
+				return $response->body->error." - ".$response->body->reason;
+			} else {
+				return false;
+			}
+		} else {
+			return true;
+		}
+
+	}
+
 }
