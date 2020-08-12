@@ -22,7 +22,7 @@ class CouchDB_Connector {
 	}
 
 
-	function pingDB() {
+	function pingHost() {
 
 		$response = \Httpful\Request::get($this->CouchURL)->send();
 
@@ -116,5 +116,24 @@ class CouchDB_Connector {
 		}
 
 	}
+
+
+	/** Clustered Operations **/
+
+	function getClusterNodes() {
+
+		$response = \Httpful\Request::get($this->CouchURL."/_membership")->send();
+
+		if (! isset($response->body->all_nodes) OR
+			! isset($response->body->cluster_nodes) OR
+			$response->body->all_nodes != $response->body->cluster_nodes) {
+			return false;
+		}
+
+		return $response->body->all_nodes;
+
+
+	}
+
 
 }

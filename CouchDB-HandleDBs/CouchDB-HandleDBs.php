@@ -28,6 +28,8 @@ class CouchDB_HandleDBs extends CLI
 
         $options->registerCommand('ping-couchdb', 'Ping a CouchDB Instance');
 
+        $options->registerCommand('details-cluster', 'Get details about Cluster Nodes');
+
         $options->registerCommand('details-db',   'Get details of a DB');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'details-db');
 
@@ -48,6 +50,9 @@ class CouchDB_HandleDBs extends CLI
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'revoke-db');
         $options->registerOption('grant-admin',   'Database Admin Grants',   null, 'grant-admin',   'revoke-db');
         $options->registerOption('grant-members', 'Database Members Grants', null, 'grant-members', 'revoke-db');
+
+        $options->registerCommand('rebalance-db', 'Rebalance a DB across a cluster');
+        $options->registerOption('database',      'Database to operate on',  null, 'database',      'rebalance-db');
 
     }
 
@@ -70,14 +75,17 @@ class CouchDB_HandleDBs extends CLI
         } else {
             switch ($options->getCmd()) {
                 case 'ping-couchdb':
-                    $this->pingDB($url, $username, $password);
+                    $this->pingHost($url, $username, $password);
+                    break;
+                case 'details-cluster':
+                    $this->detailsCluster($url, $username, $password);
                     break;
                 case 'details-db':
                     $database = trim($options->getOpt('database'));
                     if (!is_string($database) OR strlen($database) == 0) {
                         $this->error('No target database specified (--database)');
                     } else {
-                        $this->pingDB($url, $username, $password);
+                        $this->pingHost($url, $username, $password);
                         $this->fullDetailsDB($url, $username, $password, $database);
                     }
                     break;
@@ -97,6 +105,14 @@ class CouchDB_HandleDBs extends CLI
                         $this->deleteDB($url, $username, $password, $database);
                     }
                     break;
+                case 'rebalance-db':
+                    $database = trim($options->getOpt('database'));
+                    if (!is_string($database) OR strlen($database) == 0) {
+                        $this->error('No target database specified (--database)');
+                    } else {
+                        $this->rebalanceDB($url, $username, $password, $database);
+                    }
+                    break;
                 default:
                     $this->error('No known command was called, we show the default help instead:');
                     echo $options->help();
@@ -109,15 +125,16 @@ class CouchDB_HandleDBs extends CLI
 
 
     /** Function to Ping remote Database **/
-    protected function pingDB($url, $username, $password) {
+    protected function pingHost($url, $username, $password) {
 
         $this->info('CouchDB Ping to '.$url);
 
         $CouchDB_C = new CouchDB_Connector($url, $username, $password);
-        $ping = $CouchDB_C->pingDB();
+        $ping = $CouchDB_C->pingHost();
 
         if ($ping === FALSE) {
             $this->error('Ping error');
+            return false;
         } else {
             $this->success('Found CouchDB version '.$ping->version.' ('.$ping->uuid.')');
         }
@@ -177,8 +194,10 @@ class CouchDB_HandleDBs extends CLI
         } else {
             if (is_string($status)) {
                 $this->error($status);
+                return false;
             } else {
                 $this->error('Unknown error retrieving database informations');
+                return false;
             }
         }
 
@@ -221,8 +240,10 @@ class CouchDB_HandleDBs extends CLI
         } else {
             if (is_string($status)) {
                 $this->error($status);
+                return false;
             } else {
                 $this->error('Unknown error retrieving database informations');
+                return false;
             }
         }
 
@@ -296,8 +317,10 @@ class CouchDB_HandleDBs extends CLI
         } else {
             if (is_string($status)) {
                 $this->error($status);
+                return false;
             } else {
                 $this->error('Unknown error retrieving database informations');
+                return false;
             }
         }
 
@@ -308,7 +331,7 @@ class CouchDB_HandleDBs extends CLI
     /** Function to delete a database from a remote server **/
     protected function deleteDB($url, $username, $password, $database) {
 
-        $this->pingDB($url, $username, $password);
+        $this->pingHost($url, $username, $password);
 
         $this->info('Deleting database '.$database.' on '.$url);
 
@@ -327,12 +350,15 @@ class CouchDB_HandleDBs extends CLI
             } else {
                 if (is_string($status)) {
                     $this->error($status);
+                    return false;
                 } else {
                     $this->error('Unknown error deleting database');
+                    return false;
                 }
             }
         } else {
             $this->error('Operation cancelled');
+            return false;
         }
 
     }
@@ -341,7 +367,7 @@ class CouchDB_HandleDBs extends CLI
     /** Function to create a database on a remote server **/
     protected function createDB($url, $username, $password, $database, $grantAdmin, $grantMembers) {
 
-        $this->pingDB($url, $username, $password);
+        $this->pingHost($url, $username, $password);
 
         $this->info('Creating database '.$database.' on '.$url);
 
@@ -354,8 +380,10 @@ class CouchDB_HandleDBs extends CLI
         } else {
             if (is_string($status)) {
                 $this->error($status);
+                return false;
             } else {
                 $this->error('Unknown error creating database');
+                return false;
             }
         }
 
@@ -365,6 +393,48 @@ class CouchDB_HandleDBs extends CLI
 
     }
 
+    protected function detailsCluster($url, $username, $password) {
+
+        $this->pingHost($url, $username, $password);
+
+        $this->info("Fetching nodes in the cluster:");
+
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+        $status = $CouchDB_C->getClusterNodes();
+
+        if (is_array($status)) {
+            foreach ($status as $eachNode) {
+                $this->success(" Found node: ".$eachNode);
+            }
+        } else {
+            $this->error('Error getting Cluster Nodes: maybe not all nodes are currently online?');
+            return false;
+        }
+
+    }
+
+    protected function rebalanceDB($url, $username, $password, $database) {
+
+        $this->pingHost($url, $username, $password);
+
+        $this->info("Fetching nodes in the cluster:");
+
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+        $status = $CouchDB_C->getClusterNodes();
+
+        if (is_array($status)) {
+            foreach ($status as $eachNode) {
+                $this->success(" Found node: ".$eachNode);
+            }
+        } else {
+            $this->error('Error getting Cluster Nodes: maybe not all nodes are currently online?');
+            return false;
+        }
+
+/*        $this->detailDB($url, $username, $password, $database);
+        $this->detailDBShards($url, $username, $password, $database);
+        $this->detailDBPermissions($url, $username, $password, $database); */
+    }
 
 }
 

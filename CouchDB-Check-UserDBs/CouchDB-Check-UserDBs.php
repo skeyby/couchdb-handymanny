@@ -4,7 +4,7 @@
 $COUCHURL = "http://";
 $COUCHUSER = "admin";
 $COUCHPASSWORD = "";
-$startKey = "org.couchdb.user:SPZFNC81A42A509L";
+$startKey = "org.couchdb.user:R";
 
 if (file_exists("./config.php")) { include "./config.php"; }
 
