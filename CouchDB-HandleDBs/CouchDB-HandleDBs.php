@@ -28,10 +28,21 @@ class CouchDB_HandleDBs extends CLI
 
         $options->registerCommand('ping-couchdb', 'Ping a CouchDB Instance');
 
+        $options->registerCommand('get-tasks',    'Get currently running tasks');
+
         $options->registerCommand('details-cluster', 'Get details about Cluster Nodes');
+
+        $options->registerCommand('list-dbs',     'Lists all the DBs in the server');
+        $options->registerOption('start',         'Set start point for db list',  null, 'start',      'list-dbs');
+        $options->registerOption('limit',         'Limits the amount of dbs reported',  null, 'limit', 'list-dbs');
+
+        $options->registerCommand('sync-db',      'Resync the shards of a DB');
+        $options->registerOption('database',      'Database to operate on',  null, 'database',      'sync-db');
+        $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'sync-db');
 
         $options->registerCommand('details-db',   'Get details of a DB');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'details-db');
+        $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'details-db');
 
         $options->registerCommand('delete-db',    'Deletes a DB');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'delete-db');
@@ -77,13 +88,39 @@ class CouchDB_HandleDBs extends CLI
                 case 'ping-couchdb':
                     $this->pingHost($url, $username, $password);
                     break;
+                case 'get-tasks':
+                    $this->getTasks($url, $username, $password);
+                    break;
                 case 'details-cluster':
                     $this->detailsCluster($url, $username, $password);
                     break;
+                case 'list-dbs':
+                    if (trim($options->getOpt('start'))) {
+                        $start = trim($options->getOpt('start'));
+                    } else {
+                        $start = "";
+                    }                   
+                    if (trim($options->getOpt('limit'))) {
+                        $limit = trim($options->getOpt('limit'));
+                    } else {
+                        $limit = 25;
+                    }
+                    $this->listDBs($url, $username, $password, $start, $limit);
+                    break;
+                case 'sync-db':
+                    $database = trim($options->getOpt('database'));
+                    $allDatabases = $options->getOpt('all-databases');
+                    if ($allDatabases !== true && (!is_string($database) OR strlen($database) == 0)) {
+                        $this->error('No target database specified (--database) / no --all-databases specified');
+                    } else {
+                        $this->syncDB($url, $username, $password, $database);
+                    }
+                    break;
                 case 'details-db':
                     $database = trim($options->getOpt('database'));
-                    if (!is_string($database) OR strlen($database) == 0) {
-                        $this->error('No target database specified (--database)');
+                    $allDatabases = $options->getOpt('all-databases');
+                    if ($allDatabases !== true && (!is_string($database) OR strlen($database) == 0)) {
+                        $this->error('No target database specified (--database) / no --all-databases specified');
                     } else {
                         $this->pingHost($url, $username, $password);
                         $this->fullDetailsDB($url, $username, $password, $database);
@@ -114,7 +151,7 @@ class CouchDB_HandleDBs extends CLI
                     }
                     break;
                 default:
-                    $this->error('No known command was called, we show the default help instead:');
+                    $this->error('No known command was called, let me show you the default help then:');
                     echo $options->help();
                     echo PHP_EOL;
                     exit;
@@ -143,6 +180,148 @@ class CouchDB_HandleDBs extends CLI
 
     }
 
+
+    protected function getTasks($url, $username, $password) {
+
+        $this->pingHost($url, $username, $password);
+
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+
+
+        $this->info("Currently running tasks:");
+        echo PHP_EOL;
+
+        $allTasks = $CouchDB_C->getTasks();
+
+        if (is_array($allTasks)) {
+            $tf = new TableFormatter($this->colors);
+            $tf->setMaxWidth(160);
+            $tf->setBorder(' | '); // nice border between colmns
+
+            echo $tf->format(
+                array('20%', '20%', '*', '5%'),
+                array('Type', 'Node', 'Database', '%')
+            );
+
+            echo str_pad('', $tf->getMaxWidth(), '-') . "\n";  
+
+            foreach ($allTasks as $eachTask) {
+                echo $tf->format(
+                    array('20%', '20%', '*', '5%'),
+                    array($eachTask->type, $eachTask->node, $eachTask->database, isset($eachTask->progress) ? $eachTask->progress."%" : '--'),
+                    array(Colors::C_CYAN, Colors::C_GREEN, Colors::C_GREEN, Colors::C_GREEN)
+                );
+            }
+
+        } else {
+            if (is_string($status)) {
+                $this->error($status);
+                return false;
+            } else {
+                $this->error('Unknown error retrieving database informations');
+                return false;
+            }
+        }
+
+        echo PHP_EOL;
+        $this->info("Currently running replicators:");
+        echo PHP_EOL;
+
+        $allReplications = $CouchDB_C->getReplicators();
+
+        if (is_object($allReplications) && is_array($allReplications->jobs)) {
+
+            $tf = new TableFormatter($this->colors);
+            $tf->setMaxWidth(160);
+            $tf->setBorder(' | '); // nice border between colmns
+
+            echo $tf->format(
+                array('5%', '15%', '10%', '*', '5%'),
+                array('ID', 'Node', 'Database', 'Source', 'Status')
+            );
+
+            echo str_pad('', $tf->getMaxWidth(), '-') . "\n";  
+
+            foreach ($allReplications->jobs as $eachReplication) {
+                echo $tf->format(
+                    array('5%', '15%', '10%', '*', '5%'),
+                    array($eachReplication->doc_id, $eachReplication->node, $eachReplication->database, (isset($eachReplication->source) ? $eachReplication->source : '--')." => ".(isset($eachReplication->target) ? $eachReplication->target : '--'), $eachReplication->history[0]->type),
+                    array(Colors::C_CYAN, Colors::C_GREEN, Colors::C_GREEN, Colors::C_GREEN, Colors::C_CYAN)
+                );
+            }
+        }
+
+        echo PHP_EOL;
+        $this->info("Currently running reshards:");
+        echo PHP_EOL;
+
+        $allReshads = $CouchDB_C->getReshards();
+
+        if (is_object($allReshads) && is_array($allReshads->jobs)) {
+
+            $tf = new TableFormatter($this->colors);
+            $tf->setMaxWidth(160);
+            $tf->setBorder(' | '); // nice border between colmns
+
+            echo $tf->format(
+                array('20%', '20%', '*', '10%'),
+                array('Type', 'Node', 'Shard', 'Status')
+            );
+
+            echo str_pad('', $tf->getMaxWidth(), '-') . "\n";  
+
+            foreach ($allReshads->jobs as $eachJob) {
+//                print_r($eachJob);
+                echo $tf->format(
+                    array('20%', '20%', '*', '10%'),
+                    array($eachJob->type, $eachJob->node, $eachJob->source, isset($eachJob->job_state) ? $eachJob->job_state : '--'),
+                    array(Colors::C_CYAN, Colors::C_GREEN, Colors::C_GREEN, Colors::C_GREEN)
+                );
+            }
+        }
+
+    }
+
+    protected function listDBs($url, $username, $password, $start, $limit) {
+
+        $this->pingHost($url, $username, $password);
+
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+        $allDBs = $CouchDB_C->getAllDBs($start, $limit);
+
+        if (is_array($allDBs)) {
+            $tf = new TableFormatter($this->colors);
+            $tf->setBorder(' | '); // nice border between colmns
+
+            echo $tf->format(
+                array('10%', '*'),
+                array('#', 'DB Name')
+            );
+
+            echo str_pad('', $tf->getMaxWidth(), '-') . "\n";  
+
+            foreach ($allDBs as $Key => $Value) {
+                echo $tf->format(
+                    array('10%', '*'),
+                    array($Key, $Value),
+                    array(Colors::C_CYAN, Colors::C_GREEN)
+                );
+            }
+
+        } else {
+            if (is_string($status)) {
+                $this->error($status);
+                return false;
+            } else {
+                $this->error('Unknown error retrieving database informations');
+                return false;
+            }
+        }
+
+    }
+
+
+
     protected function fullDetailsDB($url, $username, $password, $database) {
         $this->detailDB($url, $username, $password, $database);
         $this->detailDBShards($url, $username, $password, $database);
@@ -164,7 +343,7 @@ class CouchDB_HandleDBs extends CLI
             $tf->setBorder(' | '); // nice border between colmns
 
             echo $tf->format(
-                array('50%', '*'),
+                array('40%', '*'),
                 array('Property', 'Name')
             );
 
@@ -185,12 +364,11 @@ class CouchDB_HandleDBs extends CLI
 
             foreach ($Table as $Key => $Value) {
                 echo $tf->format(
-                    array('50%', '*'),
+                    array('40%', '*'),
                     array($Key, $Value),
                     array(Colors::C_CYAN, Colors::C_GREEN)
                 );
             }
-
         } else {
             if (is_string($status)) {
                 $this->error($status);
@@ -202,6 +380,8 @@ class CouchDB_HandleDBs extends CLI
         }
 
         echo PHP_EOL;
+
+        return $status;
 
     }
 
@@ -248,6 +428,8 @@ class CouchDB_HandleDBs extends CLI
         }
 
         echo PHP_EOL;
+
+        return $status;
 
     }
 
@@ -325,6 +507,8 @@ class CouchDB_HandleDBs extends CLI
         }
 
         echo PHP_EOL;
+
+        return $status;
 
     }
 
@@ -411,29 +595,178 @@ class CouchDB_HandleDBs extends CLI
             return false;
         }
 
+        echo PHP_EOL;        
+
+        return $status;
+
     }
+
+    protected function syncDB($url, $username, $password, $database) {
+
+        $clusterDetails = $this->detailsCluster($url, $username, $password);
+        if (! is_array($clusterDetails)) { return false; }
+
+        $clusterNodes = count($clusterDetails);
+
+        $dbDetails =  $this->detailDB($url, $username, $password, $database);
+        if (! is_object($dbDetails)) { return false; }
+
+        $this->detailDBShards($url, $username, $password, $database);
+
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+        $this->info("Resyncing shards for the database ".$database);
+        $status = $CouchDB_C->syncDBShards($database);
+
+        if ($status === true) {
+            $this->success('Resync for '.$database.' queued');
+        } else {
+            if (is_string($status)) {
+                $this->error($status);
+                return false;
+            } else {
+                $this->error('Unknown error resyncing database');
+                return false;
+            }
+        }
+
+        echo PHP_EOL;
+        return true;
+
+    }
+
 
     protected function rebalanceDB($url, $username, $password, $database) {
 
-        $this->pingHost($url, $username, $password);
+        $clusterDetails = $this->detailsCluster($url, $username, $password);
+        if (! is_array($clusterDetails)) { return false; }
 
-        $this->info("Fetching nodes in the cluster:");
+        $clusterNodes = count($clusterDetails);
 
-        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
-        $status = $CouchDB_C->getClusterNodes();
+        $dbDetails =  $this->detailDB($url, $username, $password, $database);
+        if (! is_object($dbDetails)) { return false; }
 
-        if (is_array($status)) {
-            foreach ($status as $eachNode) {
-                $this->success(" Found node: ".$eachNode);
-            }
+        $dbNodes = $dbDetails->cluster->n;
+
+        if ($clusterNodes == $dbNodes) {
+            $this->success("Database is on ".$dbNodes." nodes of a ".$clusterNodes." cluster... everything looks fine!");
+            return true;
         } else {
-            $this->error('Error getting Cluster Nodes: maybe not all nodes are currently online?');
-            return false;
+            $this->warning("Database is on ".$dbNodes." nodes of a ".$clusterNodes." cluster... rebalance needed!");
+            echo PHP_EOL;
         }
 
-/*        $this->detailDB($url, $username, $password, $database);
-        $this->detailDBShards($url, $username, $password, $database);
-        $this->detailDBPermissions($url, $username, $password, $database); */
+        $databaseShards = $this->detailDBShards($url, $username, $password, $database);
+
+        $foundNodes = array();
+        $foundShards = array();
+        foreach($databaseShards->shards as $eachShard => $shardNodes) {
+            $foundShards[] = $eachShard;
+            foreach ($shardNodes as $eachNode) {
+                $this->info("Found Shard ".$eachShard." on ".$eachNode);      
+                $foundNodes[] = $eachNode;
+            }
+        }
+        $PopulatedNodes = array_unique($foundNodes);
+        $PopulatedShards = array_unique($foundShards);
+        $this->info("The DB is currently on the following nodes:");
+        foreach ($PopulatedNodes as $eachNode) {
+            $this->info($eachNode);
+        }
+
+        $EmptyNodes = array();
+        $EmptyNodes = array_diff($clusterDetails, $PopulatedNodes);
+        if (count($EmptyNodes) == 0) {
+            $this->success("The DB seems to be on every node it should be!");
+            return true;
+        }
+
+        $this->warning("The DB needs to be pushed on the following nodes:");
+        foreach ($EmptyNodes as $eachNode) {
+            $this->warning($eachNode);
+        }
+
+        echo PHP_EOL;
+
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+        $Metadatas = $CouchDB_C->getDBMetadatas($database);
+
+        $dbPermissions = $this->detailDBPermissions($url, $username, $password, $database);
+
+        foreach ($EmptyNodes as $eachNode) {
+            foreach ($PopulatedShards as $eachShard) {
+                $this->warning("Adding Shard $eachShard and Node $eachNode to Changelog");
+                $row = array();
+                $row[] = "add";
+                $row[] = $eachShard;
+                $row[] = $eachNode;
+                $Metadatas->changelog[] = $row;
+            }
+        } 
+
+        foreach ($EmptyNodes as $eachNode) {
+            $this->warning("Populating ".$eachNode." on by_node");
+            $Metadatas->by_node->$eachNode = $PopulatedShards;
+        }
+
+        foreach ($PopulatedShards as $eachShard) {
+            foreach ($EmptyNodes as $eachNode) {
+                $this->warning("Adding Node $eachNode on Shard $eachShard to by_range");
+                $Metadatas->by_range->$eachShard[] = $eachNode;
+            }
+        }
+
+        $this->info("Saving updated metadatas for database ".$database);
+        $status = $CouchDB_C->setDBMetadatas($database, $Metadatas);
+
+        if ($status === true) {
+            $this->success('Metadatas for '.$database.' updated ');
+        } else {
+            if (is_string($status)) {
+                $this->error($status);
+                return false;
+            } else {
+                $this->error('Unknown error updating metadatas');
+                return false;
+            }
+        }
+        echo PHP_EOL;
+
+        $this->info("Resyncing shards for the database ".$database);
+        $status = $CouchDB_C->syncDBShards($database);
+
+        if ($status === true) {
+            $this->success('Resync for '.$database.' queued');
+        } else {
+            if (is_string($status)) {
+                $this->error($status);
+                return false;
+            } else {
+                $this->error('Unknown error resyncing database');
+                return false;
+            }
+        }
+        echo PHP_EOL;
+
+        $this->info("Reappling permission to database ".$database);
+        $status = $CouchDB_C->setDBPermissions($database, $dbPermissions);
+
+        if ($status === true) {
+            $this->success('Permission for '.$database.' updated');
+        } else {
+            if (is_string($status)) {
+                $this->error($status);
+                return false;
+            } else {
+                $this->error('Unknown error updating database permissions');
+                return false;
+            }
+        }
+        echo PHP_EOL;
+
+        echo $this->info("Re-executing to check current database situation:");
+
+        $this->rebalanceDB($url, $username, $password, $database);
+
     }
 
 }
