@@ -637,6 +637,8 @@ class CouchDB_HandleDBs extends CLI
 
     protected function rebalanceDB($url, $username, $password, $database) {
 
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+
         $clusterDetails = $this->detailsCluster($url, $username, $password);
         if (! is_array($clusterDetails)) { return false; }
 
@@ -647,11 +649,25 @@ class CouchDB_HandleDBs extends CLI
 
         $dbNodes = $dbDetails->cluster->n;
 
+        $SystemConfig = $CouchDB_C->getConfig();
+
+        if (!is_object($SystemConfig) OR ! isset($SystemConfig->cluster->n)) {
+            $this->error("Could not get current Cluster settings");
+            return false;
+        }
+
         if ($clusterNodes == $dbNodes) {
             $this->success("Database is on ".$dbNodes." nodes of a ".$clusterNodes." cluster... everything looks fine!");
             return true;
         } else {
-            $this->warning("Database is on ".$dbNodes." nodes of a ".$clusterNodes." cluster... rebalance needed!");
+            if ($dbNodes >= $SystemConfig->cluster->n) {
+                $this->success("Database is on ".$dbNodes." nodes of a ".$clusterNodes." nodes cluster... this respect the currently System 'cluster.n' value of ".$SystemConfig->cluster->n);
+                return true;
+            } else {
+                $this->warning("Database is on ".$dbNodes." nodes of a ".$clusterNodes." nodes cluster... rebalance needed!");
+                $neededNodes = $SystemConfig->cluster->n - $dbNodes;
+                $this->info("We need to put the DB on at least ".$neededNodes." nodes");
+            }
             echo PHP_EOL;
         }
 
@@ -687,7 +703,6 @@ class CouchDB_HandleDBs extends CLI
 
         echo PHP_EOL;
 
-        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
         $Metadatas = $CouchDB_C->getDBMetadatas($database);
 
         $dbPermissions = $this->detailDBPermissions($url, $username, $password, $database);

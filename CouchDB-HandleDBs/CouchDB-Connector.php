@@ -34,6 +34,23 @@ class CouchDB_Connector {
 
 	}
 
+
+	function getConfig() {
+
+		$response = \Httpful\Request::get($this->CouchURL."_node/_local/_config")->send();
+
+		if (is_object($response->body) && isset($response->body->couchdb)) {
+			return $response->body;
+		} else {
+			if (isset($response->body->error) && isset($response->body->reason)) {
+				return $response->body->error." - ".$response->body->reason;
+			} else {
+				return false;
+			}
+		}
+
+	}	
+
 	function getTasks() {
 
 		$response = \Httpful\Request::get($this->CouchURL."_active_tasks")->send();
