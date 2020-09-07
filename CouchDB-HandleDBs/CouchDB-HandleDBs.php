@@ -665,14 +665,17 @@ class CouchDB_HandleDBs extends CLI
                 return true;
             } else {
                 $this->warning("Database is on ".$dbNodes." nodes of a ".$clusterNodes." nodes cluster... rebalance needed!");
+                // number of nodes the database needs to be pushed
                 $neededNodes = $SystemConfig->cluster->n - $dbNodes;
                 $this->info("We need to put the DB on at least ".$neededNodes." nodes");
             }
             echo PHP_EOL;
         }
-
+        
+        // fetch current db shards details
         $databaseShards = $this->detailDBShards($url, $username, $password, $database);
 
+        // find the nodes where the database currently exists
         $foundNodes = array();
         $foundShards = array();
         foreach($databaseShards->shards as $eachShard => $shardNodes) {
@@ -689,6 +692,7 @@ class CouchDB_HandleDBs extends CLI
             $this->info($eachNode);
         }
 
+        // by difference, find the nodes where the database doesn't exists
         $EmptyNodes = array();
         $EmptyNodes = array_diff($clusterDetails, $PopulatedNodes);
         if (count($EmptyNodes) == 0) {
@@ -696,18 +700,26 @@ class CouchDB_HandleDBs extends CLI
             return true;
         }
 
-        $this->warning("The DB needs to be pushed on the following nodes:");
+        $this->warning("The DB needs to be pushed on $neededNodes of the following nodes:");
         foreach ($EmptyNodes as $eachNode) {
             $this->warning($eachNode);
         }
 
         echo PHP_EOL;
+        
+        // find the nodes to add the database to
+        if (count($EmptyNodes) == $neededNodes) {
+            $ToAddNodes = $EmptyNodes;
+        } else {
+            shuffle($EmptyNodes);
+            $ToAddNodes = array_slice($EmptyNodes, 0, $neededNodes);
+        }
 
         $Metadatas = $CouchDB_C->getDBMetadatas($database);
 
         $dbPermissions = $this->detailDBPermissions($url, $username, $password, $database);
 
-        foreach ($EmptyNodes as $eachNode) {
+        foreach ($ToAddNodes as $eachNode) {
             foreach ($PopulatedShards as $eachShard) {
                 $this->warning("Adding Shard $eachShard and Node $eachNode to Changelog");
                 $row = array();
@@ -718,13 +730,13 @@ class CouchDB_HandleDBs extends CLI
             }
         } 
 
-        foreach ($EmptyNodes as $eachNode) {
+        foreach ($ToAddNodes as $eachNode) {
             $this->warning("Populating ".$eachNode." on by_node");
             $Metadatas->by_node->$eachNode = $PopulatedShards;
         }
 
         foreach ($PopulatedShards as $eachShard) {
-            foreach ($EmptyNodes as $eachNode) {
+            foreach ($ToAddNodes as $eachNode) {
                 $this->warning("Adding Node $eachNode on Shard $eachShard to by_range");
                 $Metadatas->by_range->$eachShard[] = $eachNode;
             }
