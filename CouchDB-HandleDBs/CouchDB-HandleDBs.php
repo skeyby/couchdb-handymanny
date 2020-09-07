@@ -716,6 +716,11 @@ class CouchDB_HandleDBs extends CLI
         }
 
         $Metadatas = $CouchDB_C->getDBMetadatas($database);
+        
+        if (!is_object($Metadatas)) {
+            $this->error("Could not get database metadata");
+            return false;
+        }        
 
         $dbPermissions = $this->detailDBPermissions($url, $username, $password, $database);
 
