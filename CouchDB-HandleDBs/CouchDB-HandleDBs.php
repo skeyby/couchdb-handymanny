@@ -121,6 +121,23 @@ class CouchDB_HandleDBs extends CLI
                     $allDatabases = $options->getOpt('all-databases');
                     if ($allDatabases !== true && (!is_string($database) OR strlen($database) == 0)) {
                         $this->error('No target database specified (--database) / no --all-databases specified');
+                    } elseif ($allDatabases) {
+                        $this->pingHost($url, $username, $password);
+                        
+                        $this->loopAllDBs($url, $username, $password, function($database) use ($url, $username, $password) {
+                            $this->fullDetailsDB($url, $username, $password, $database); 
+                        });
+                        
+//                        $start = 0;
+//                        $limit = 25;
+//                        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+//                        do {
+//                            $allDBs = $CouchDB_C->getAllDBs($start, $limit);
+//                            foreach ($allDBs as $database) {
+//                                $this->fullDetailsDB($url, $username, $password, $database);                            
+//                            }
+//                            $start += $limit;
+//                        } while (count($allDBs) > 0);
                     } else {
                         $this->pingHost($url, $username, $password);
                         $this->fullDetailsDB($url, $username, $password, $database);
@@ -159,7 +176,20 @@ class CouchDB_HandleDBs extends CLI
         }
         echo PHP_EOL;
     }
-
+    
+    private function loopAllDBs($url, $username, $password, $callback) {
+        $start = "";
+        $limit = 25;
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+        do {
+            $this->info('Looping DBs - start '.$start);
+            $allDBs = $CouchDB_C->getAllDBs($start, $limit);
+            foreach ($allDBs as $database) {
+                $callback($database);  
+                $start = $database.".";
+            }
+        } while (count($allDBs) > 0);        
+    }
 
     /** Function to Ping remote Database **/
     protected function pingHost($url, $username, $password) {
