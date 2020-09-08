@@ -64,6 +64,7 @@ class CouchDB_HandleDBs extends CLI
 
         $options->registerCommand('rebalance-db', 'Rebalance a DB across a cluster');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'rebalance-db');
+        $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'rebalance-db');
 
     }
 
@@ -127,17 +128,6 @@ class CouchDB_HandleDBs extends CLI
                         $this->loopAllDBs($url, $username, $password, function($database) use ($url, $username, $password) {
                             $this->fullDetailsDB($url, $username, $password, $database); 
                         });
-                        
-//                        $start = 0;
-//                        $limit = 25;
-//                        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
-//                        do {
-//                            $allDBs = $CouchDB_C->getAllDBs($start, $limit);
-//                            foreach ($allDBs as $database) {
-//                                $this->fullDetailsDB($url, $username, $password, $database);                            
-//                            }
-//                            $start += $limit;
-//                        } while (count($allDBs) > 0);
                     } else {
                         $this->pingHost($url, $username, $password);
                         $this->fullDetailsDB($url, $username, $password, $database);
@@ -161,8 +151,13 @@ class CouchDB_HandleDBs extends CLI
                     break;
                 case 'rebalance-db':
                     $database = trim($options->getOpt('database'));
-                    if (!is_string($database) OR strlen($database) == 0) {
-                        $this->error('No target database specified (--database)');
+                    $allDatabases = $options->getOpt('all-databases');
+                    if ($allDatabases !== true && (!is_string($database) OR strlen($database) == 0)) {
+                        $this->error('No target database specified (--database) / no --all-databases specified');
+                    } elseif ($allDatabases) {
+                        $this->loopAllDBs($url, $username, $password, function($database) use ($url, $username, $password) {
+                            $this->rebalanceDB($url, $username, $password, $database);
+                        });
                     } else {
                         $this->rebalanceDB($url, $username, $password, $database);
                     }
