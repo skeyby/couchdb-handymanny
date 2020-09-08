@@ -43,6 +43,7 @@ class CouchDB_HandleDBs extends CLI
         $options->registerCommand('details-db',   'Get details of a DB');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'details-db');
         $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'details-db');
+        $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'details-db');
 
         $options->registerCommand('delete-db',    'Deletes a DB');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'delete-db');
@@ -65,7 +66,7 @@ class CouchDB_HandleDBs extends CLI
         $options->registerCommand('rebalance-db', 'Rebalance a DB across a cluster');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'rebalance-db');
         $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'rebalance-db');
-
+        $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'rebalance-db');
     }
 
     // implement your code
@@ -123,11 +124,12 @@ class CouchDB_HandleDBs extends CLI
                     if ($allDatabases !== true && (!is_string($database) OR strlen($database) == 0)) {
                         $this->error('No target database specified (--database) / no --all-databases specified');
                     } elseif ($allDatabases) {
+                        $startDB = trim($options->getOpt('start-db'));
                         $this->pingHost($url, $username, $password);
                         
                         $this->loopAllDBs($url, $username, $password, function($database) use ($url, $username, $password) {
                             $this->fullDetailsDB($url, $username, $password, $database); 
-                        });
+                        }, $startDB);
                     } else {
                         $this->pingHost($url, $username, $password);
                         $this->fullDetailsDB($url, $username, $password, $database);
@@ -155,9 +157,10 @@ class CouchDB_HandleDBs extends CLI
                     if ($allDatabases !== true && (!is_string($database) OR strlen($database) == 0)) {
                         $this->error('No target database specified (--database) / no --all-databases specified');
                     } elseif ($allDatabases) {
+                        $startDB = trim($options->getOpt('start-db'));
                         $this->loopAllDBs($url, $username, $password, function($database) use ($url, $username, $password) {
                             $this->rebalanceDB($url, $username, $password, $database);
-                        });
+                        }, $startDB);
                     } else {
                         $this->rebalanceDB($url, $username, $password, $database);
                     }
@@ -172,8 +175,7 @@ class CouchDB_HandleDBs extends CLI
         echo PHP_EOL;
     }
     
-    private function loopAllDBs($url, $username, $password, $callback) {
-        $start = "";
+    private function loopAllDBs($url, $username, $password, $callback, $start = "") {
         $limit = 25;
         $CouchDB_C = new CouchDB_Connector($url, $username, $password);
         do {
@@ -819,6 +821,8 @@ class CouchDB_HandleDBs extends CLI
             }
         }
         echo PHP_EOL;
+        
+        \sleep(2);
 
         echo $this->info("Re-executing to check current database situation:");
 
