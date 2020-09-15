@@ -67,6 +67,13 @@ class CouchDB_HandleDBs extends CLI
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'rebalance-db');
         $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'rebalance-db');
         $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'rebalance-db');
+        
+        $options->registerCommand('migrate-db', 'Migrate a DB from a source to a destination set');
+        $options->registerOption('database',      'Database to operate on',  null, 'database',      'migrate-db');
+        $options->registerOption('source',      'Source node',  null, 'source',      'migrate-db');
+        $options->registerOption('destination',      'Destination nodes separated by commas',  null, 'destination',      'migrate-db');
+        // $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'rebalance-db');
+        // $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'rebalance-db');        
     }
 
     // implement your code
@@ -165,6 +172,22 @@ class CouchDB_HandleDBs extends CLI
                         $this->rebalanceDB($url, $username, $password, $database);
                     }
                     break;
+                case 'migrate-db':
+                    $database = trim($options->getOpt('database'));
+                    $source = trim($options->getOpt('source'));
+                    $destination = explode(",", trim($options->getOpt('destination')));
+//                    $allDatabases = $options->getOpt('all-databases');
+//                    if ($allDatabases !== true && (!is_string($database) OR strlen($database) == 0)) {
+//                        $this->error('No target database specified (--database) / no --all-databases specified');
+//                    } elseif ($allDatabases) {
+//                        $startDB = trim($options->getOpt('start-db'));
+//                        $this->loopAllDBs($url, $username, $password, function($database) use ($url, $username, $password) {
+//                            $this->rebalanceDB($url, $username, $password, $database);
+//                        }, $startDB);
+//                    } else {
+                        $this->migrateDB($url, $username, $password, $database, $source, $destination);
+//                    }
+                    break;                    
                 default:
                     $this->error('No known command was called, let me show you the default help then:');
                     echo $options->help();
@@ -463,7 +486,7 @@ class CouchDB_HandleDBs extends CLI
 
     protected function detailDBPermissions($url, $username, $password, $database) {
 
-        $this->info('Retrieving details about database '.$database.' shards on '.$url);
+        $this->info('Retrieving permissions about database '.$database.' on '.$url);
 
         $CouchDB_C = new CouchDB_Connector($url, $username, $password);
         $status = $CouchDB_C->getDBPermissions($database);
@@ -661,6 +684,149 @@ class CouchDB_HandleDBs extends CLI
 
     }
 
+    protected function migrateDB(string $url, string $username, string $password, string $database, string $source, array $destinations) {
+        $couchDBConnection = new CouchDB_Connector($url, $username, $password);
+          
+        // cluster n
+        $systemConfig = $couchDBConnection->getConfig();
+
+        if (!is_object($systemConfig) OR ! isset($systemConfig->cluster->n)) {
+            $this->error("Could not get current Cluster settings");
+            return false;
+        }        
+        
+        // database shards
+        $databaseShards = $this->detailDBShards($url, $username, $password, $database);
+        
+        if (!is_object($databaseShards)) {
+            $this->error("Could not get DB shards");
+            return false;
+        }  
+        
+        // get metadata e db permissions
+        $Metadatas = $couchDBConnection->getDBMetadatas($database);
+
+        if (!is_object($Metadatas)) {
+            $this->error("Could not get database metadata");
+            return false;
+        }        
+
+        $dbPermissions = $this->detailDBPermissions($url, $username, $password, $database);   
+        
+        $saveIsNeeded = false;
+        
+        // loop databse shards
+        foreach($databaseShards->shards as $eachShard => $shardNodes) {
+            // if this shard is in source
+            if (in_array($source, $shardNodes)) {
+                $this->info("Source has $eachShard shard");
+                
+                $saveIsNeeded = true;
+                
+                // whether we have more nodes with this shard then needed or not
+                if (count($shardNodes) > $systemConfig->cluster->n) {
+                    // delete shard on source
+                    $this->warning("Removing Shard $eachShard and Node $source to Changelog");
+                    $row = array();
+                    $row[] = "remove";
+                    $row[] = $eachShard;
+                    $row[] = $source;
+                    $Metadatas->changelog[] = $row;   
+                    
+                    $this->warning("Removing ".$source." on by_node");
+                    if (isset($Metadatas->by_node->$source)) {
+                        $Metadatas->by_node->$source = array_diff($Metadatas->by_node->$source, [$eachShard]);
+                        if (count($Metadatas->by_node->$source) == 0) {
+                            unset($Metadatas->by_node->$source);
+                        }
+                    }
+
+                    $this->warning("Removing Node $source on Shard $eachShard to by_range");
+                    if (isset($Metadatas->by_range->$eachShard)) {
+                        $Metadatas->by_range->$eachShard = array_diff($Metadatas->by_range->$eachShard, [$source]);
+                    }                     
+                } else {              
+                    // add the shard on one of the destination nodes
+                    $destinationsWithoutShard = array_diff($destinations, $shardNodes);
+                    shuffle($destinationsWithoutShard);
+                    $toAddNode = $destinationsWithoutShard[0];
+            
+                    $this->warning("Adding Shard $eachShard and Node $toAddNode to Changelog");
+                    $row = array();
+                    $row[] = "add";
+                    $row[] = $eachShard;
+                    $row[] = $toAddNode;
+                    $Metadatas->changelog[] = $row;    
+                    
+                    $this->warning("Populating ".$toAddNode." on by_node");
+                    if (!isset($Metadatas->by_node->$toAddNode)) {
+                        $Metadatas->by_node->$toAddNode = [];
+                    }
+                    $Metadatas->by_node->$toAddNode[] = $eachShard;
+
+                    $this->warning("Adding Node $toAddNode on Shard $eachShard to by_range");
+                    if (!isset($Metadatas->by_range->$eachShard)) {
+                        $Metadatas->by_range->$eachShard = [];
+                    }                    
+                    $Metadatas->by_range->$eachShard[] = $toAddNode;                  
+                }     
+            }
+        }
+        
+        if ($saveIsNeeded) {
+            $this->info("Saving updated metadatas for database ".$database);
+            $status = $couchDBConnection->setDBMetadatas($database, $Metadatas);
+
+            if ($status === true) {
+                $this->success('Metadatas for '.$database.' updated ');
+            } else {
+                if (is_string($status)) {
+                    $this->error($status);
+                    return false;
+                } else {
+                    $this->error('Unknown error updating metadatas');
+                    return false;
+                }
+            }
+            echo PHP_EOL;
+
+            $this->info("Resyncing shards for the database ".$database);
+            $status = $couchDBConnection->syncDBShards($database);
+
+            if ($status === true) {
+                $this->success('Resync for '.$database.' queued');
+            } else {
+                if (is_string($status)) {
+                    $this->error($status);
+                    return false;
+                } else {
+                    $this->error('Unknown error resyncing database');
+                    return false;
+                }
+            }
+            echo PHP_EOL;
+
+            $this->info("Reappling permission to database ".$database);
+            $status = $couchDBConnection->setDBPermissions($database, $dbPermissions);
+
+            if ($status === true) {
+                $this->success('Permission for '.$database.' updated');
+            } else {
+                if (is_string($status)) {
+                    $this->error($status);
+                    return false;
+                } else {
+                    $this->error('Unknown error updating database permissions');
+                    return false;
+                }
+            }
+        } else {
+            $this->info("Nothing to save");
+        }
+
+        echo PHP_EOL;            
+               
+    }
 
     protected function rebalanceDB($url, $username, $password, $database) {
 
