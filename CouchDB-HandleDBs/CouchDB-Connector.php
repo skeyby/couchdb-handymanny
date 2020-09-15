@@ -290,8 +290,7 @@ class CouchDB_Connector {
 		$response = \Httpful\Request::get($this->CouchURL."/_membership")->send();
 
 		if (! isset($response->body->all_nodes) OR
-			! isset($response->body->cluster_nodes) OR
-			$response->body->all_nodes != $response->body->cluster_nodes) {
+			! isset($response->body->cluster_nodes)) {
 			return false;
 		}
 
