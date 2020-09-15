@@ -714,6 +714,7 @@ class CouchDB_HandleDBs extends CLI
         $dbPermissions = $this->detailDBPermissions($url, $username, $password, $database);   
         
         $saveIsNeeded = false;
+        $nodesToCheck = [];
         
         // loop databse shards
         foreach($databaseShards->shards as $eachShard => $shardNodes) {
@@ -726,30 +727,30 @@ class CouchDB_HandleDBs extends CLI
                 // whether we have more nodes with this shard then needed or not
                 if (count($shardNodes) > $systemConfig->cluster->n) {
                     // delete shard on source
-                    $this->warning("Removing Shard $eachShard and Node $source to Changelog");
+                    $this->warning("Removing Shard $eachShard and Node $source from Changelog");
                     $row = array();
                     $row[] = "remove";
                     $row[] = $eachShard;
                     $row[] = $source;
                     $Metadatas->changelog[] = $row;   
                     
-                    $this->warning("Removing ".$source." on by_node");
+                    $this->warning("Removing ".$source." from by_node");
                     if (isset($Metadatas->by_node->$source)) {
-                        $Metadatas->by_node->$source = array_diff($Metadatas->by_node->$source, [$eachShard]);
+                        $Metadatas->by_node->$source = array_values(array_diff($Metadatas->by_node->$source, [$eachShard]));
                         if (count($Metadatas->by_node->$source) == 0) {
                             unset($Metadatas->by_node->$source);
                         }
                     }
 
-                    $this->warning("Removing Node $source on Shard $eachShard to by_range");
+                    $this->warning("Removing Node $source on Shard $eachShard from by_range");
                     if (isset($Metadatas->by_range->$eachShard)) {
-                        $Metadatas->by_range->$eachShard = array_diff($Metadatas->by_range->$eachShard, [$source]);
+                        $Metadatas->by_range->$eachShard = array_values(array_diff($Metadatas->by_range->$eachShard, [$source]));
                     }                     
                 } else {              
                     // add the shard on one of the destination nodes
                     $destinationsWithoutShard = array_diff($destinations, $shardNodes);
                     shuffle($destinationsWithoutShard);
-                    $toAddNode = $destinationsWithoutShard[0];
+                    $toAddNode = array_shift($destinationsWithoutShard);
             
                     $this->warning("Adding Shard $eachShard and Node $toAddNode to Changelog");
                     $row = array();
@@ -768,13 +769,14 @@ class CouchDB_HandleDBs extends CLI
                     if (!isset($Metadatas->by_range->$eachShard)) {
                         $Metadatas->by_range->$eachShard = [];
                     }                    
-                    $Metadatas->by_range->$eachShard[] = $toAddNode;                  
+                    $Metadatas->by_range->$eachShard[] = $toAddNode;  
+                    $nodesToCheck[] = $toAddNode;
                 }     
             }
         }
         
         if ($saveIsNeeded) {
-            $this->info("Saving updated metadatas for database ".$database);
+            $this->info("Saving updated metadatas for database ".$database." ");
             $status = $couchDBConnection->setDBMetadatas($database, $Metadatas);
 
             if ($status === true) {
@@ -818,6 +820,21 @@ class CouchDB_HandleDBs extends CLI
                 } else {
                     $this->error('Unknown error updating database permissions');
                     return false;
+                }
+            }
+            
+            if (count($nodesToCheck) > 0) {
+                $nodesToCheck = array_unique($nodesToCheck);
+                foreach ($nodesToCheck as $nodeToCheck) {
+                    $this->info("Checking internal replication jobs for ".$nodeToCheck);
+
+                    do {
+                        $status = $couchDBConnection->getNodeSystem($nodeToCheck);
+                        if (is_object($status)) {
+                            $this->info("Internal replication jobs for ".$nodeToCheck.": ".$status->internal_replication_jobs);
+                        }
+                        sleep(1);
+                    } while (!is_object($status) || $status->internal_replication_jobs !== 0);
                 }
             }
         } else {

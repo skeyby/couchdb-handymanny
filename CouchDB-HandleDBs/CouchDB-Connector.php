@@ -148,6 +148,22 @@ class CouchDB_Connector {
 		}
 
 	}
+        
+	function getNodeSystem($node) {
+
+            $response = \Httpful\Request::get($this->CouchURL."_node/$node/_system/")->send();
+
+            if (isset($response->body)) {
+                    return $response->body;
+            } else {
+                    if (isset($response->body->error) && isset($response->body->reason)) {
+                            return $response->body->error." - ".$response->body->reason;
+                    } else {
+                            return false;
+                    }
+            }
+
+	}        
 
 	function setDBMetadatas($database, $Metadatas) {
 
