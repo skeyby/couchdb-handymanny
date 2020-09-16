@@ -16,6 +16,7 @@ use splitbrain\phpcli\TableFormatter;
 
 class CouchDB_HandleDBs extends CLI
 {
+    private $count;
 
     // register options and arguments
     protected function setup(Options $options)
@@ -72,8 +73,8 @@ class CouchDB_HandleDBs extends CLI
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'migrate-db');
         $options->registerOption('source',      'Source node',  null, 'source',      'migrate-db');
         $options->registerOption('destination',      'Destination nodes separated by commas',  null, 'destination',      'migrate-db');
-        // $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'rebalance-db');
-        // $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'rebalance-db');        
+        $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'migrate-db');
+        $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'migrate-db');        
     }
 
     // implement your code
@@ -173,20 +174,21 @@ class CouchDB_HandleDBs extends CLI
                     }
                     break;
                 case 'migrate-db':
+                    $this->count = 0;
                     $database = trim($options->getOpt('database'));
                     $source = trim($options->getOpt('source'));
                     $destination = explode(",", trim($options->getOpt('destination')));
-//                    $allDatabases = $options->getOpt('all-databases');
-//                    if ($allDatabases !== true && (!is_string($database) OR strlen($database) == 0)) {
-//                        $this->error('No target database specified (--database) / no --all-databases specified');
-//                    } elseif ($allDatabases) {
-//                        $startDB = trim($options->getOpt('start-db'));
-//                        $this->loopAllDBs($url, $username, $password, function($database) use ($url, $username, $password) {
-//                            $this->rebalanceDB($url, $username, $password, $database);
-//                        }, $startDB);
-//                    } else {
+                    $allDatabases = $options->getOpt('all-databases');
+                    if ($allDatabases !== true && (!is_string($database) OR strlen($database) == 0)) {
+                        $this->error('No target database specified (--database) / no --all-databases specified');
+                    } elseif ($allDatabases) {
+                        $startDB = trim($options->getOpt('start-db'));
+                        $this->loopAllDBs($url, $username, $password, function($database) use ($url, $username, $password, $source, $destination) {
+                            $this->migrateDB($url, $username, $password, $database, $source, $destination);
+                        }, $startDB);
+                    } else {
                         $this->migrateDB($url, $username, $password, $database, $source, $destination);
-//                    }
+                    }
                     break;                    
                 default:
                     $this->error('No known command was called, let me show you the default help then:');
@@ -776,7 +778,8 @@ class CouchDB_HandleDBs extends CLI
         }
         
         if ($saveIsNeeded) {
-            $this->info("Saving updated metadatas for database ".$database." ");
+            $this->count++;
+            $this->info("Saving updated metadatas for database ".$database);
             $status = $couchDBConnection->setDBMetadatas($database, $Metadatas);
 
             if ($status === true) {
@@ -824,6 +827,7 @@ class CouchDB_HandleDBs extends CLI
             }
             
             if (count($nodesToCheck) > 0) {
+                // sleep(3);
                 $nodesToCheck = array_unique($nodesToCheck);
                 foreach ($nodesToCheck as $nodeToCheck) {
                     $this->info("Checking internal replication jobs for ".$nodeToCheck);
@@ -833,10 +837,16 @@ class CouchDB_HandleDBs extends CLI
                         if (is_object($status)) {
                             $this->info("Internal replication jobs for ".$nodeToCheck.": ".$status->internal_replication_jobs);
                         }
-                        sleep(1);
-                    } while (!is_object($status) || $status->internal_replication_jobs !== 0);
+                        if (!is_object($status) || $status->internal_replication_jobs !== 0) {
+                            sleep(5);
+                        } else {
+                            break;
+                        }
+                    } while (true);
                 }
             }
+            
+            $this->info("Saved {$this->count} databases");
         } else {
             $this->info("Nothing to save");
         }
