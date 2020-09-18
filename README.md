@@ -314,3 +314,41 @@ admin                 | group                 | _admin
 member                | group                 | _admin
 ```
 
+### delete-db
+
+This command deletes a DB on current CouchDB Cluster/Instance.
+
+This command supports the following additional parameter:
+- --database \<database\> : the name of the database to delete. This parameter is, surprisingly, mandatory.
+
+When run, the command will output a short brief detail of the DB to allow you to be sure of what you're doing, and will require you to answer either yes or no fo the deletion.
+
+Example:
+```
+# ./CouchDB-HandleDBs.php --url http://node-04/backend/ --username admin --password whatever delete-db --database astronomy
+
+ℹ CouchDB Ping to http://node-04/backend/
+✓ Found CouchDB version 3.1.0 (e6d3ff96d7ec59b3185e3d27a0036c0f)
+
+ℹ Deleting database astronomy on http://node-04/backend/
+ℹ Retrieving details about database astronomy on http://node-04/backend/
+
+Property                       | Name
+-------------------------------------------------------------------------------
+Database Name                  | astronomy
+Total Documents                | 0
+Total Deleted Documents        | 0
+Documents size                 | 0
+Database size                  | 16708
+Cluster Replicas               | 3
+Cluster Shards                 | 2
+Cluster Read Quorum            | 2
+Cluster Write Quorum           | 2
+Partitioned                    | NO
+Compaction running             | NO
+
+✖ Proceed with deletion? (yes/no):
+yes
+✓ Database astronomy deleted on http://node-04/backend/
+```
+
