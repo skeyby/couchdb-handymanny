@@ -178,3 +178,60 @@ Example 2:
 1       | _users
 2       | documents
 ```
+
+### create-db
+
+This command creates a DB in the CouchDB Cluster/Instance
+
+This command supports the following additional parameters:
+- --database \<database\> : the name of the database to create. This parameter is, surprisingly, mandatory.
+- --grant-admin \<grant\> : the admins grant to apply to the DB. Not implemented yet.
+- --grant-members \<grant\> : the members grant to apply to the DB. Not implemented yet.
+
+The output reports the outcome for the operation and all the details for the newly-created database, including it's size, it's N, R, W values, shards placement and permissions.
+
+Example:
+```
+# ./CouchDB-HandleDBs.php --url --url http://node-04/backend/ --username admin --password whatever create-db --database astronomy
+
+ℹ CouchDB Ping to http://node-04/backend/
+✓ Found CouchDB version 3.1.0 (e6d3ff96d7ec59b3185e3d27a0036c0f)
+
+ℹ Creating database astronomy on http://node-04/backend/
+✓ Database astronomy created on http://node-04/backend/
+ℹ Appling grants to database astronomy on http://node-04/backend/
+ℹ Retrieving details about database astronomy on http://node-04/backend/
+
+Property                       | Name
+-------------------------------------------------------------------------------
+Database Name                  | astronomy
+Total Documents                | 0
+Total Deleted Documents        | 0
+Documents size                 | 0
+Database size                  | 16709
+Cluster Replicas               | 3
+Cluster Shards                 | 2
+Cluster Read Quorum            | 2
+Cluster Write Quorum           | 2
+Partitioned                    | NO
+Compaction running             | NO
+
+ℹ Retrieving details about database astronomy shards on http://node-04/backend/
+
+Shard                                  | Node
+-------------------------------------------------------------------------------
+00000000-7fffffff                      | couchdb@10.133.xxx.xxx
+00000000-7fffffff                      | couchdb@10.133.xxx.xx
+00000000-7fffffff                      | home-06@10.133.xxx.xx
+80000000-ffffffff                      | couchdb@10.133.xxx.xx
+80000000-ffffffff                      | couchdb@10.133.xx.xx
+80000000-ffffffff                      | home-05@10.133.xxx.xx
+
+ℹ Retrieving permissions about database astronomy on http://node-04/backend/
+
+Permission Level      | Permission Type       | Permission Target
+-------------------------------------------------------------------------------
+admin                 | group                 | _admin
+member                | group                 | _admin
+```
+
