@@ -685,6 +685,10 @@ class CouchDB_HandleDBs extends CLI
         return true;
 
     }
+    
+    private function audit(string $type, string $database, string $message) {
+        file_put_contents("./audit.log","[".((new \DateTime())->format(\DateTime::ATOM))."] - TYPE: $type - DB: $database - ".$message.PHP_EOL, FILE_APPEND | LOCK_EX);
+    }
 
     protected function migrateDB(string $url, string $username, string $password, string $database, string $source, array $destinations) {
         $couchDBConnection = new CouchDB_Connector($url, $username, $password);
@@ -694,6 +698,7 @@ class CouchDB_HandleDBs extends CLI
 
         if (!is_object($systemConfig) OR ! isset($systemConfig->cluster->n)) {
             $this->error("Could not get current Cluster settings");
+            $this->audit("error", $database, "Could not get current Cluster settings");
             return false;
         }        
         
@@ -702,6 +707,7 @@ class CouchDB_HandleDBs extends CLI
         
         if (!is_object($databaseShards)) {
             $this->error("Could not get DB shards");
+            $this->audit("error", $database, "Could not get DB shards");
             return false;
         }  
         
@@ -710,6 +716,7 @@ class CouchDB_HandleDBs extends CLI
 
         if (!is_object($Metadatas)) {
             $this->error("Could not get database metadata");
+            $this->audit("error", $database, "Could not get database metadata");
             return false;
         }        
 
@@ -747,7 +754,7 @@ class CouchDB_HandleDBs extends CLI
                     $this->warning("Removing Node $source on Shard $eachShard from by_range");
                     if (isset($Metadatas->by_range->$eachShard)) {
                         $Metadatas->by_range->$eachShard = array_values(array_diff($Metadatas->by_range->$eachShard, [$source]));
-                    }                     
+                    }   
                 } else {              
                     // add the shard on one of the destination nodes
                     $destinationsWithoutShard = array_diff($destinations, $shardNodes);
@@ -787,9 +794,11 @@ class CouchDB_HandleDBs extends CLI
             } else {
                 if (is_string($status)) {
                     $this->error($status);
+                    $this->audit("error", $database, $status);
                     return false;
                 } else {
                     $this->error('Unknown error updating metadatas');
+                    $this->audit("error", $database, 'Unknown error updating metadatas');
                     return false;
                 }
             }
@@ -803,9 +812,11 @@ class CouchDB_HandleDBs extends CLI
             } else {
                 if (is_string($status)) {
                     $this->error($status);
+                    $this->audit("error", $database, $status);
                     return false;
                 } else {
                     $this->error('Unknown error resyncing database');
+                    $this->audit("error", $database, 'Unknown error resyncing database');
                     return false;
                 }
             }
@@ -819,9 +830,11 @@ class CouchDB_HandleDBs extends CLI
             } else {
                 if (is_string($status)) {
                     $this->error($status);
+                    $this->audit("error", $database, $status);
                     return false;
                 } else {
                     $this->error('Unknown error updating database permissions');
+                    $this->audit("error", $database, 'Unknown error updating database permissions');
                     return false;
                 }
             }
@@ -830,6 +843,7 @@ class CouchDB_HandleDBs extends CLI
                 // sleep(3);
                 $nodesToCheck = array_unique($nodesToCheck);
                 foreach ($nodesToCheck as $nodeToCheck) {
+                    $this->audit("info", $database, "Added shard on $nodeToCheck");
                     $this->info("Checking internal replication jobs for ".$nodeToCheck);
 
                     do {
@@ -844,6 +858,8 @@ class CouchDB_HandleDBs extends CLI
                         }
                     } while (true);
                 }
+            } else {
+                $this->audit("info", $database, "Removed shard(s) from $source");
             }
             
             $this->info("Saved {$this->count} databases");
