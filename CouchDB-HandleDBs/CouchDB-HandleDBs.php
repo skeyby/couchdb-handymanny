@@ -31,10 +31,10 @@ class CouchDB_HandleDBs extends CLI
 
         $options->registerCommand('get-tasks',    'Get currently running tasks');
 
-        $options->registerCommand('details-cluster', 'Get details about Cluster Nodes');
+        $options->registerCommand('detail-cluster', 'Get details about Cluster Nodes');
 
         $options->registerCommand('list-dbs',     'Lists all the DBs in the server');
-        $options->registerOption('start',         'Set start point for db list',  null, 'start',      'list-dbs');
+        $options->registerOption('start-db',      'Set start point for db list',  null, 'start-db',    'list-dbs');
         $options->registerOption('limit',         'Limits the amount of dbs reported',  null, 'limit', 'list-dbs');
 
         $options->registerCommand('sync-db',      'Resync the shards of a DB');
@@ -101,12 +101,12 @@ class CouchDB_HandleDBs extends CLI
                 case 'get-tasks':
                     $this->getTasks($url, $username, $password);
                     break;
-                case 'details-cluster':
+                case 'detail-cluster':
                     $this->detailsCluster($url, $username, $password);
                     break;
                 case 'list-dbs':
-                    if (trim($options->getOpt('start'))) {
-                        $start = trim($options->getOpt('start'));
+                    if (trim($options->getOpt('start-db'))) {
+                        $start = trim($options->getOpt('start-db'));
                     } else {
                         $start = "";
                     }                   

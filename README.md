@@ -34,7 +34,7 @@ All the commands in CouchDB Handy-Manny require some parameters. Some parameters
 
 This is a list of the _common_ parameters:
 
-- --username \<username\> : allows you to specify the username to use to connect to CouchDB. Altough not technically _required_, quite certainly you want this user to be an _admin or some functionalities may not work correclty
+- --username \<username\> : allows you to specify the username to use to connect to CouchDB. Altough not technically _required_, quite certainly you want this user to be an \_admin or some functionalities may not work correclty
 - --password \<password\> : the password for the username you just specified
 - --url \<url\> : the url for the CouchDB istance you want to connect to. It could be http://127.1:5984/ or https://mycluster.couch/ or http://node-01.couch/ or whatever makes sense to you (and to _curl_)
 - --loglevel \<level\> : filters out CouchDB Handy-Manny chattiness...  Valid levels are: debug, info, notice, success, warning, error, critical, alert, emergency.
@@ -222,10 +222,10 @@ Shard                                  | Node
 -------------------------------------------------------------------------------
 00000000-7fffffff                      | couchdb@10.133.xxx.xxx
 00000000-7fffffff                      | couchdb@10.133.xxx.xx
-00000000-7fffffff                      | home-06@10.133.xxx.xx
+00000000-7fffffff                      | node-06@10.133.xxx.xx
 80000000-ffffffff                      | couchdb@10.133.xxx.xx
 80000000-ffffffff                      | couchdb@10.133.xx.xx
-80000000-ffffffff                      | home-05@10.133.xxx.xx
+80000000-ffffffff                      | node-05@10.133.xxx.xx
 
 ℹ Retrieving permissions about database astronomy on http://node-04/backend/
 
@@ -301,10 +301,10 @@ Shard                                  | Node
 -------------------------------------------------------------------------------
 00000000-7fffffff                      | couchdb@10.133.109.142
 00000000-7fffffff                      | couchdb@10.133.136.55
-00000000-7fffffff                      | home-06@10.133.138.29
+00000000-7fffffff                      | node-06@10.133.138.29
 80000000-ffffffff                      | couchdb@10.133.138.27
 80000000-ffffffff                      | couchdb@10.133.98.18
-80000000-ffffffff                      | home-05@10.133.138.28
+80000000-ffffffff                      | node-05@10.133.138.28
 
 ℹ Retrieving permissions about database astronomy on http://node-04/backend/
 
@@ -351,4 +351,191 @@ Compaction running             | NO
 yes
 ✓ Database astronomy deleted on http://node-04/backend/
 ```
+
+### grant-db
+
+This command will allow you to add a grant to a database, when will be ready.
+
+### revoke-db
+
+This command will allow you to revoke a grant from a database, when will be ready.
+
+### sync-db
+
+This command allows you to trigger a shard resynchronization among the cluster: in general when you alter the Cluster shards, CouchDB automatically resync the shards of the database at the first new write in the DB. Fact is you may have some frequently-read and hardly-written DBs and could prefer to ask for an immediate resync on the shards. Here you are.
+
+This command supports some additional parameters:
+- --database \<database\> : specify the DB you want to resync
+- --all-databases : tells CouchDB Handy-Manny to iterate on all the DBs in the cluster resyning all of them.
+
+This command should also include a --start-db parameter, yet to be done.
+
+The output for the command is the detail for the DB (so you can check the shards or whatever) and a report that the resync request has been posted to CouchDB:
+
+Example:
+```
+# ./CouchDB-HandleDBs.php --url http://node-04/backend/ --username admin --password whatever sync-db --database queue
+
+ℹ CouchDB Ping to http://node-04/backend/
+✓ Found CouchDB version 3.1.0 (e6d3ff96d7ec59b3185e3d27a0036c0f)
+
+ℹ Fetching nodes in the cluster:
+✓  Found node: couchdb@10.133.xxx.xxx
+✓  Found node: couchdb@10.133.xxx.xx
+✓  Found node: couchdb@10.133.xx.xx
+✓  Found node: node-05@10.133.xxx.xx
+✓  Found node: node-06@10.133.xxx.xx
+
+ℹ Retrieving details about database queue on http://node-04/backend/
+
+Property                       | Name
+-------------------------------------------------------------------------------
+Database Name                  | queue
+Total Documents                | 11247
+Total Deleted Documents        | 493934
+Documents size                 | 135024903
+Database size                  | 178311630
+Cluster Replicas               | 3
+Cluster Shards                 | 2
+Cluster Read Quorum            | 2
+Cluster Write Quorum           | 2
+Partitioned                    | NO
+Compaction running             | NO
+
+ℹ Retrieving details about database queue shards on http://node-04/backend/
+
+Shard                                  | Node
+-------------------------------------------------------------------------------
+00000000-7fffffff                      | couchdb@10.133.xxx.xx
+00000000-7fffffff                      | node-05@10.133.xxx.xx
+00000000-7fffffff                      | node-06@10.133.xxx.xx
+80000000-ffffffff                      | couchdb@10.133.xxx.xx
+80000000-ffffffff                      | node-05@10.133.xxx.xx
+80000000-ffffffff                      | node-06@10.133.xxx.xx
+
+ℹ Resyncing shards for the database queue
+✓ Resync for queue queued
+```
+
+### rebalance-db
+
+This command will check for the Cluster "N" value against a Database "N" value. The Database "N" number is set on database creation in order to match the Cluster "N" value, what happens is that if you add new nodes later on to the Cluster, the Cluster "N" value gets higher but the "N" value for already existing databases is not updated. This will lead to "uneven" situation when you add nodes but actually only the old one will keep the datas and basically get all the work done. As said, this command will the Cluster "N" and Database "N" and, if Database "N" is lower than Cluster "N", it will teach CouchDB to copy some shards of the DB to a few other nodes in order to pair them up. After updating the metadatas for the database (read fixing the N value) it will also call the shard resync for you, what a nice guy. It Cluster "N" and Database "N" match or Database "N" is higher than Cluster "N" it will silently pass on.
+
+This command supports some additional parameters:
+- --database \<database\> : specify the DB you want to rebalance
+- --all-databases : tells CouchDB Handy-Manny to iterate on all the DBs in the cluster rebalancing all of them
+- --start-db \<start-db\> : when using --all-databases allows you to specify the starting point for the iterator
+
+The output for this command includes the details for the DB you want to operate on, and a details wether the DB needs a rebalancing or not. If the DB needs a rebalancing, it will report which nodes in the cluster don't have an active copy of the datas, and then report which Nodes will host new copies of the datas (CouchDB Handy-Manny will pick out enough Random Nodes in order to match up the Database "N" to the Cluster "N"). After completing the operation CouchDB Handy-Manny will print out the database details again so that you can check what has happened.
+
+Example:
+```
+# ./CouchDB-HandleDBs.php --url http://node-04/backend/ --username admin --password whatever rebalance-db --database userdb-43445652535237344134344638333952
+
+ℹ CouchDB Ping to http://node-04/backend/
+✓ Found CouchDB version 3.1.0 (e6d3ff96d7ec59b3185e3d27a0036c0f)
+
+ℹ Fetching nodes in the cluster:
+✓  Found node: couchdb@10.133.xxx.xxx
+✓  Found node: couchdb@10.133.xxx.xx
+✓  Found node: couchdb@10.133.xxx.xx
+✓  Found node: couchdb@10.133.xx.xx
+✓  Found node: node-05@10.133.xxx.xx
+✓  Found node: node-06@10.133.xxx.xx
+
+ℹ Retrieving details about database userdb-43445652535237344134344638333952 on http://node-04/backend/
+
+Property                       | Name
+-------------------------------------------------------------------------------
+Database Name                  | userdb-43445652535237344134344638333952
+Total Documents                | 1
+Total Deleted Documents        | 0
+Documents size                 | 3596
+Database size                  | 328074
+Cluster Replicas               | 2
+Cluster Shards                 | 2
+Cluster Read Quorum            | 2
+Cluster Write Quorum           | 2
+Partitioned                    | NO
+Compaction running             | NO
+
+⚠ Database is on 2 nodes of a 6 nodes cluster... rebalance needed!
+ℹ We need to put the DB on at least 1 nodes
+
+ℹ Retrieving details about database userdb-43445652535237344134344638333952 shards on http://node-04/backend/
+
+Shard                                  | Node
+-------------------------------------------------------------------------------
+00000000-7fffffff                      | couchdb@10.133.xxx.xxx
+00000000-7fffffff                      | couchdb@10.133.xx.xx
+80000000-ffffffff                      | couchdb@10.133.xxx.xxx
+80000000-ffffffff                      | couchdb@10.133.xx.xx
+
+ℹ Found Shard 00000000-7fffffff on couchdb@10.133.xxx.xxx
+ℹ Found Shard 00000000-7fffffff on couchdb@10.133.xx.xx
+ℹ Found Shard 80000000-ffffffff on couchdb@10.133.xxx.xxx
+ℹ Found Shard 80000000-ffffffff on couchdb@10.133.xx.xx
+ℹ The DB is currently on the following nodes:
+ℹ couchdb@10.133.xxx.xxx
+ℹ couchdb@10.133.xx.xx
+⚠ The DB needs to be pushed on 1 of the following nodes:
+⚠ couchdb@10.133.xxx.xx
+⚠ couchdb@10.133.xxx.xx
+⚠ node-05@10.133.xxx.xx
+⚠ node-06@10.133.xxx.xx
+
+ℹ Retrieving permissions about database userdb-43445652535237344134344638333952 on http://node-04/backend/
+
+Permission Level      | Permission Type       | Permission Target
+-------------------------------------------------------------------------------
+admin                 | user                  | CDVRSR74A44F839R
+member                | user                  | CDVRSR74A44F839R
+
+⚠ Adding Shard 00000000-7fffffff and Node couchdb@10.133.xxx.xx to Changelog
+⚠ Adding Shard 80000000-ffffffff and Node couchdb@10.133.xxx.xx to Changelog
+⚠ Populating couchdb@10.133.xxx.xx on by_node
+⚠ Adding Node couchdb@10.133.xxx.xx on Shard 00000000-7fffffff to by_range
+⚠ Adding Node couchdb@10.133.xxx.xx on Shard 80000000-ffffffff to by_range
+ℹ Saving updated metadatas for database userdb-43445652535237344134344638333952
+✓ Metadatas for userdb-43445652535237344134344638333952 updated
+
+ℹ Resyncing shards for the database userdb-43445652535237344134344638333952
+✓ Resync for userdb-43445652535237344134344638333952 queued
+
+ℹ Reappling permission to database userdb-43445652535237344134344638333952
+✓ Permission for userdb-43445652535237344134344638333952 updated
+
+ℹ Re-executing to check current database situation:
+ℹ CouchDB Ping to http://node-04/backend/
+✓ Found CouchDB version 3.1.0 (e6d3ff96d7ec59b3185e3d27a0036c0f)
+
+ℹ Fetching nodes in the cluster:
+✓  Found node: couchdb@10.133.xxx.xxx
+✓  Found node: couchdb@10.133.xxx.xx
+✓  Found node: couchdb@10.133.xxx.xx
+✓  Found node: couchdb@10.133.xx.xx
+✓  Found node: node-05@10.133.xxx.xx
+✓  Found node: node-06@10.133.xxx.xx
+
+ℹ Retrieving details about database userdb-43445652535237344134344638333952 on http://node-04/backend/
+
+Property                       | Name
+-------------------------------------------------------------------------------
+Database Name                  | userdb-43445652535237344134344638333952
+Total Documents                | 1
+Total Deleted Documents        | 0
+Documents size                 | 3456
+Database size                  | 45452
+Cluster Replicas               | 3
+Cluster Shards                 | 2
+Cluster Read Quorum            | 2
+Cluster Write Quorum           | 2
+Partitioned                    | NO
+Compaction running             | NO
+
+✓ Database is on 3 nodes of a 6 nodes cluster... this respect the currently System 'cluster.n' value of 3
+```
+
+### migrate-db
+
 
