@@ -235,3 +235,82 @@ admin                 | group                 | _admin
 member                | group                 | _admin
 ```
 
+### detail-db
+
+This command reports all the details about a specified database.
+
+This command supports some additional parameters:
+- --database \<database\> : specify the DB you want to know the details of.
+- --all-databases : tells CouchDB Handy-Manny to iterate on all the DBs in the cluster outputting the details for all of them
+- --start-db \<start-db\> : when using --all-databases allows you to specify the starting point for the iterator.
+
+Quite obviously --database and --all-database are mutually exclusive.
+
+The output will details all the information that can be obtained about the DB, divided in a few sections:
+
+#### generic informations
+
+- Database name: well...
+- Total documents: the current total number of documents in the DB, **excluding the deleted ones**.
+- Total delete documents: the current total number of deleted documents in the DB.
+- Documents size: the sum of the size of each document in the DB, so basically that's the size of your datas.
+- Database size: the size of the database on disk, so basically that's the disk usage of your datas.
+- Cluster replicas: that's the "N" value for the database. It basically indicates how many copies of each documents will be placed in the cluster.
+- Cluster shards: that's the "Q" value for the database. It basically indicates how many slices, or shards are used to divide the datas in the cluster.
+- Cluster read quorum: that's the "R" value for the database. It basically indicates how many nodes in the cluster must read the data that is being requested in order for the cluster to give it back to the client.
+- Cluster write quorumt: that's the "W" value for the database. It basically indicate how many nodes in the cluster must have succesfully written the data on disk before the cluster reports the write operation as successfull to the client.
+- Partitioned: tells you if the database is partitioned or not
+- Compaction running: tells you if the internal compaction daemon is currently working on this database
+
+_Note: for a more detailed explanation of the N/Q/R/W values please refer to official CouchDB documentation._
+
+#### shards informations
+
+This table contains the details of every shard for the database and it's placement among the nodes in the cluster. You'll have "N" x "Q" shards placed on random nodes in the Cluster.
+
+#### permissions informations
+
+This table reports the permissions applied to a database. Currently CouchDB supports a permission level (that can be _admin_ or _member_), to different permission types (that can be _group_ or _user_) and any permission target you want (that is a group name, an username). The applied permission is the result of the combination of the rows in this table.
+
+Example:
+```
+./CouchDB-HandleDBs.php --url http://node-04/backend/ --username admin --password whatever details-db --database astronomy
+
+ℹ CouchDB Ping to http://node-04/backend/
+✓ Found CouchDB version 3.1.0 (e6d3ff96d7ec59b3185e3d27a0036c0f)
+
+ℹ Retrieving details about database astronomy on http://node-04/backend/
+
+Property                       | Name
+-------------------------------------------------------------------------------
+Database Name                  | astronomy
+Total Documents                | 0
+Total Deleted Documents        | 0
+Documents size                 | 0
+Database size                  | 16708
+Cluster Replicas               | 3
+Cluster Shards                 | 2
+Cluster Read Quorum            | 2
+Cluster Write Quorum           | 2
+Partitioned                    | NO
+Compaction running             | NO
+
+ℹ Retrieving details about database astronomy shards on http://node-04/backend/
+
+Shard                                  | Node
+-------------------------------------------------------------------------------
+00000000-7fffffff                      | couchdb@10.133.109.142
+00000000-7fffffff                      | couchdb@10.133.136.55
+00000000-7fffffff                      | home-06@10.133.138.29
+80000000-ffffffff                      | couchdb@10.133.138.27
+80000000-ffffffff                      | couchdb@10.133.98.18
+80000000-ffffffff                      | home-05@10.133.138.28
+
+ℹ Retrieving permissions about database astronomy on http://node-04/backend/
+
+Permission Level      | Permission Type       | Permission Target
+-------------------------------------------------------------------------------
+admin                 | group                 | _admin
+member                | group                 | _admin
+```
+
