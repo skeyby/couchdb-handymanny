@@ -354,11 +354,11 @@ yes
 
 ### grant-db
 
-This command will allow you to add a grant to a database, when will be ready.
+This command will allow you to add a grant to a database, when it will be ready.
 
 ### revoke-db
 
-This command will allow you to revoke a grant from a database, when will be ready.
+This command will allow you to revoke a grant from a database, when it will be ready.
 
 ### sync-db
 
@@ -538,4 +538,26 @@ Compaction running             | NO
 
 ### migrate-db
 
+This one of the most powerful command of CouchDB Handy-Manny. It's purpose it to allow you to migrate a DB (or all the DBs) off a node to other nodes in the Cluster, for example because you want to gracefully take a node out of the cluster and need to be sure that there are no active DBs on it.
+The command has a "two steps" sequence:
+- On the first run it will check current Shards layout for the DB under investigation and check if the DB has any shard on the "source" node. It if has no shards there, it will silently pass over.
+- If the DB has any active shard on the "source" node, Handy-Manny will force replication of the shards that are on the "source" node among one of the desiredr "destinations". You'll need more than one possible destination because the destination may already have a copy of that shard. Handy-Manny will sort out this for you. During this phase the Cluster Replica for the specific DB will get artificially higher by one unit.
+- Handy-Manny will now exit allowing you to choose when to go for the second step.
+- When invoked the second time, Handy-Manny will check that, by removing the "source" node, the Database "N" would still match the Cluster "N". Considering that we artifically got it higher in the previous step, if everything is fine and aligned, Handy-Manny will remove the shards from the "source" node.
+
+Please consider a few things:
+- Removing a shard doesn't delete the data files from the "source" database. This is either good news, if anything should go wrong, and also bad news, if you expect for example for disk space to free up.
+- CouchDB Handy-Manny will try to monitor the internal replication for the shards when performing the first step, yet, before performing the second one on very big databases with low "N", I'd suggest you to check that the destination nodes are effectively aligned. Just to be sure.
+- When performing a migration of "--all-databases" Handy-Manny will mix phase one and phase two according to the situation of each database it's iterating on: if on the first run it find a DB that already has an higher N (for example because you did something strange in the past) it may directly perform step two.
+- When working in migrate-db mode, Handy-Manny will write an audit.log where it reports everything it's doing. That's especially useful when working in --all-databases mode.
+- Before migrating a whole node, I suggest you to do a --all-database rebalance-db, yet again, just to be sure.
+
+This command suppots the following additional parameters:
+- --database \<database\> : the database to migrate
+- --source \<source\> : the source node for the migration
+- --destination \<destination1,destination2,destination3\> : the potential destination nodes for the migration (the database will **not** be migrated to all of them, but to as few nodes as possibile, among these, that don't have a copy of the datas)
+- --all-databases : migrate all the database in the cluster
+- --start-db : start interation for all-databases from the specified database
+
+As usual --database and --all-database are mutually exclusive
 
