@@ -354,11 +354,86 @@ yes
 
 ### grant-db
 
-This command will allow you to add a grant to a database, when it will be ready.
+This command allows you to grant a permission to a database.
+
+This command supports some additional parameters:
+- --database \<database\> : specify the DB you want to operate on
+- --grant \<level:type:target\> : specify the permission you want to grant
+
+The grant syntax is based on the following pattern:
+- Level: could be admin or member, mimicking standard CouchDBs admins and members
+- Type: could be group or user, mimicking roles and names respectively
+- Target: this is the current username or role to grant
+
+The outout for the command is the permission for the DB before and after the completition of the operation.
+
+Example:
+```
+# ./CouchDB-HandleDBs.php --url http://node-04/backend/ --username admin --password whatever grant-db --database userdb-4254544452503030413033443432334c --grant admin:group:pippo
+
+ℹ CouchDB Ping to http://node-04/backend/
+✓ Found CouchDB version 3.1.0 (e6d3ff96d7ec59b3185e3d27a0036c0f)
+
+ℹ Retrieving permissions about database userdb-4254544452503030413033443432334c on http://node-04/backend/
+
+Permission Level      | Permission Type       | Permission Target
+-------------------------------------------------------------------------------
+admin                 | user                  | BTTDRP00A03D423L
+member                | user                  | BTTDRP00A03D423L
+
+ℹ Removing grant 'pippo' of type 'group' from permission level 'admin'
+ℹ Grant not fount, adding it..
+✓ Permission for userdb-4254544452503030413033443432334c updated
+ℹ Retrieving permissions about database userdb-4254544452503030413033443432334c on http://node-04/backend/
+
+Permission Level      | Permission Type       | Permission Target
+-------------------------------------------------------------------------------
+admin                 | group                 | pippo
+admin                 | user                  | BTTDRP00A03D423L
+member                | user                  | BTTDRP00A03D423L
+```
+
 
 ### revoke-db
 
-This command will allow you to revoke a grant from a database, when it will be ready.
+This command allows you to revoke a permission from a database.
+
+This command supports some additional parameters:
+- --database \<database\> : specify the DB you want to operate on
+- --grant \<level:type:target\> : specify the permission you want to revoke
+
+The grant syntax is based on the following pattern:
+- Level: could be admin or member, mimicking standard CouchDBs admins and members
+- Type: could be group or user, mimicking roles and names respectively
+- Target: this is the current username or role to remove
+
+The outout for the command is the permission for the DB before and after the completition of the operation.
+
+Example:
+```
+# ./CouchDB-HandleDBs.php --url http://node-04/backend/ --username admin --password whatever revoke-db --database userdb-4254544452503030413033443432334c --grant admin:group:pippo
+
+ℹ CouchDB Ping to http://node-04/backend/
+✓ Found CouchDB version 3.1.0 (e6d3ff96d7ec59b3185e3d27a0036c0f)
+
+ℹ Retrieving permissions about database userdb-4254544452503030413033443432334c on http://node-04/backend/
+
+Permission Level      | Permission Type       | Permission Target
+-------------------------------------------------------------------------------
+admin                 | group                 | pippo
+admin                 | user                  | BTTDRP00A03D423L
+member                | user                  | BTTDRP00A03D423L
+
+ℹ Removing grant 'pippo' of type 'group' from permission level 'admin'
+ℹ Grant found, unsetting it..
+✓ Permission for userdb-4254544452503030413033443432334c updated
+ℹ Retrieving permissions about database userdb-4254544452503030413033443432334c on http://node-04/backend/
+
+Permission Level      | Permission Type       | Permission Target
+-------------------------------------------------------------------------------
+admin                 | user                  | BTTDRP00A03D423L
+member                | user                  | BTTDRP00A03D423L
+```
 
 ### sync-db
 

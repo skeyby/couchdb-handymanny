@@ -56,13 +56,11 @@ class CouchDB_HandleDBs extends CLI
 
         $options->registerCommand('grant-db',     'Add a grant on a DB');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'grant-db');
-        $options->registerOption('grant-admin',   'Database Admin Grants',   null, 'grant-admin',   'grant-db');
-        $options->registerOption('grant-members', 'Database Members Grants', null, 'grant-members', 'grant-db');
+        $options->registerOption('grant',         'Permission to grant (level:type:target)',   null, 'grant',   'grant-db');
 
         $options->registerCommand('revoke-db',    'Revoke a grant from a DB');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'revoke-db');
-        $options->registerOption('grant-admin',   'Database Admin Grants',   null, 'grant-admin',   'revoke-db');
-        $options->registerOption('grant-members', 'Database Members Grants', null, 'grant-members', 'revoke-db');
+        $options->registerOption('grant',         'Permission to revoke (level:type:target)',   null, 'grant',   'revoke-db');
 
         $options->registerCommand('rebalance-db', 'Rebalance a DB across a cluster');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'rebalance-db');
@@ -158,6 +156,62 @@ class CouchDB_HandleDBs extends CLI
                     } else {
                         $this->deleteDB($url, $username, $password, $database);
                     }
+                    break;
+                case 'grant-db':
+                    $database = trim($options->getOpt('database'));
+                    if (!is_string($database) OR strlen($database) == 0) {
+                        $this->error('No target database specified (--database)');
+                        return false;
+                    } 
+
+                    $grant = trim($options->getOpt('grant'));
+                    if (!is_string($grant) OR strlen($grant) == 0) {
+                        $this->error('No target database specified (--database)');
+                        return false;
+                    } else {
+                        $grantExploded = explode(":", $grant);
+                        if (count($grantExploded) != 3) {
+                            $this->error("Wrong grant syntax. Use level:type:target");
+                            return false;
+                        }
+                        if (($grantExploded[0] != "admin") AND ($grantExploded[0] != "member")) {
+                            $this->error("Grant level should be either 'admin' or 'member', but '".$grantExploded[0]."' specified");
+                            return false;
+                        }
+                        if (($grantExploded[1] != "group") AND ($grantExploded[1] != "user")) {
+                            $this->error("Grant type should be either 'group' or 'user', but '".$grantExploded[1]."'' specified");
+                            return false;
+                        }
+                    }
+                    $this->addGrantToDB($url, $username, $password, $database, $grantExploded);
+                    break;                    
+                case 'revoke-db':
+                    $database = trim($options->getOpt('database'));
+                    if (!is_string($database) OR strlen($database) == 0) {
+                        $this->error('No target database specified (--database)');
+                        return false;
+                    } 
+
+                    $grant = trim($options->getOpt('grant'));
+                    if (!is_string($grant) OR strlen($grant) == 0) {
+                        $this->error('No target database specified (--database)');
+                        return false;
+                    } else {
+                        $grantExploded = explode(":", $grant);
+                        if (count($grantExploded) != 3) {
+                            $this->error("Wrong grant syntax. Use level:type:target");
+                            return false;
+                        }
+                        if (($grantExploded[0] != "admin") AND ($grantExploded[0] != "member")) {
+                            $this->error("Grant level should be either 'admin' or 'member', but '".$grantExploded[0]."' specified");
+                            return false;
+                        }
+                        if (($grantExploded[1] != "group") AND ($grantExploded[1] != "user")) {
+                            $this->error("Grant type should be either 'group' or 'user', but '".$grantExploded[1]."'' specified");
+                            return false;
+                        }
+                    }
+                    $this->revokeGrantFromDB($url, $username, $password, $database, $grantExploded);
                     break;
                 case 'rebalance-db':
                     $database = trim($options->getOpt('database'));
@@ -563,6 +617,107 @@ class CouchDB_HandleDBs extends CLI
         return $status;
 
     }
+
+    protected function addGrantToDB($url, $username, $password, $database, $grantArray) {
+
+        $couchDBConnection = new CouchDB_Connector($url, $username, $password);
+
+        $this->pingHost($url, $username, $password);
+
+        $dbPermissions = $this->detailDBPermissions($url, $username, $password, $database);
+
+        $this->info("Adding grant '".$grantArray[2]."' of type '".$grantArray[1]."' to permission level '".$grantArray[0]."'");
+
+        /* Fixing stupid CouchDB fields name */
+        if ($grantArray[0] == "member") $grantArray[0] = "members";
+        if ($grantArray[0] == "admin") $grantArray[0] = "admins";
+        if ($grantArray[1] == "group") $grantArray[1] = "roles";
+        if ($grantArray[1] == "user") $grantArray[1] = "names";
+
+        if (isset($dbPermissions->{$grantArray[0]}->{$grantArray[1]}) AND ($key = array_search($grantArray[2], $dbPermissions->{$grantArray[0]}->{$grantArray[1]})) !== false) {
+            $this->error("Grant already set. Not proceeding");
+            return false;
+        } else {
+
+            $this->info("Grant not fount, adding it..");
+
+            if (!isset($dbPermissions->{$grantArray[0]})) {
+                $dbPermissions->{$grantArray[0]} = new StdClass();
+            }
+            if (!isset($dbPermissions->{$grantArray[0]}->{$grantArray[1]})) {
+                $dbPermissions->{$grantArray[0]}->{$grantArray[1]} = array();
+            }
+
+            $dbPermissions->{$grantArray[0]}->{$grantArray[1]}[] = $grantArray[2];
+
+            $status = $couchDBConnection->setDBPermissions($database, $dbPermissions);
+
+            if ($status === true) {
+                $this->success('Permission for '.$database.' updated');
+            } else {
+                if (is_string($status)) {
+                    $this->error($status);
+                    $this->audit("error", $database, $status);
+                    return false;
+                } else {
+                    $this->error('Unknown error updating database permissions');
+                    $this->audit("error", $database, 'Unknown error updating database permissions');
+                    return false;
+                }
+            }
+
+            $this->detailDBPermissions($url, $username, $password, $database);
+
+        }
+
+    }
+
+    protected function revokeGrantFromDB($url, $username, $password, $database, $grantArray) {
+
+        $couchDBConnection = new CouchDB_Connector($url, $username, $password);
+
+        $this->pingHost($url, $username, $password);
+
+        $dbPermissions = $this->detailDBPermissions($url, $username, $password, $database);
+
+        $this->info("Removing grant '".$grantArray[2]."' of type '".$grantArray[1]."' from permission level '".$grantArray[0]."'");
+
+        /* Fixing stupid CouchDB fields name */
+        if ($grantArray[0] == "member") $grantArray[0] = "members";
+        if ($grantArray[0] == "admin") $grantArray[0] = "admins";
+        if ($grantArray[1] == "group") $grantArray[1] = "roles";
+        if ($grantArray[1] == "user") $grantArray[1] = "names";
+
+        if (isset($dbPermissions->{$grantArray[0]}->{$grantArray[1]}) AND ($key = array_search($grantArray[2], $dbPermissions->{$grantArray[0]}->{$grantArray[1]})) !== false) {
+            $this->info("Grant found, unsetting it..");
+            unset($dbPermissions->{$grantArray[0]}->{$grantArray[1]}[$key]);
+
+            $status = $couchDBConnection->setDBPermissions($database, $dbPermissions);
+
+            if ($status === true) {
+                $this->success('Permission for '.$database.' updated');
+            } else {
+                if (is_string($status)) {
+                    $this->error($status);
+                    $this->audit("error", $database, $status);
+                    return false;
+                } else {
+                    $this->error('Unknown error updating database permissions');
+                    $this->audit("error", $database, 'Unknown error updating database permissions');
+                    return false;
+                }
+            }
+
+            $this->detailDBPermissions($url, $username, $password, $database);
+
+        } else {
+            $this->error("Grant not found. Not proceeding");
+            return false;
+        }
+
+    }
+
+
 
     /** Function to delete a database from a remote server **/
     protected function deleteDB($url, $username, $password, $database) {
