@@ -207,6 +207,23 @@ class CouchDB_Connector {
 
 	}
 
+	function compactDB($database) {
+
+		$response = \Httpful\Request::post($this->CouchURL.$database."/_compact")
+		                        ->sendsJson()
+		                        ->send();
+
+		if (! isset($response->body->ok) OR ($response->body->ok != true)) {
+			if (isset($response->body->error) && isset($response->body->reason)) {
+				return $response->body->error." - ".$response->body->reason;
+			} else {
+				return false;
+			}
+		} else {
+			return true;
+		}
+
+	}
 
 	function syncDBShards($database) {
 

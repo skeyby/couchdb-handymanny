@@ -46,6 +46,11 @@ class CouchDB_HandleDBs extends CLI
         $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'details-db');
         $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'details-db');
 
+        $options->registerCommand('compact-db',   'Compact a DB');
+        $options->registerOption('database',      'Database to operate on',  null, 'database',      'compact-db');
+        $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'compact-db');
+        $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'compact-db');
+
         $options->registerCommand('delete-db',    'Deletes a DB');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'delete-db');
 
@@ -147,6 +152,23 @@ class CouchDB_HandleDBs extends CLI
                         $this->error('No target database specified (--database)');
                     } else {
                         $this->createDB($url, $username, $password, $database, NULL, NULL);
+                    }
+                    break;
+                case 'compact-db':
+                    $database = trim($options->getOpt('database'));
+                    $allDatabases = $options->getOpt('all-databases');
+                    if ($allDatabases !== true && (!is_string($database) OR strlen($database) == 0)) {
+                        $this->error('No target database specified (--database) / no --all-databases specified');
+                    } elseif ($allDatabases) {
+                        $startDB = trim($options->getOpt('start-db'));
+                        $this->pingHost($url, $username, $password);
+                        
+                        $this->loopAllDBs($url, $username, $password, function($database) use ($url, $username, $password) {
+                            $this->compactDB($url, $username, $password, $database); 
+                        }, $startDB);
+                    } else {
+                        $this->pingHost($url, $username, $password);
+                        $this->compactDB($url, $username, $password, $database);
                     }
                     break;
                 case 'delete-db':
@@ -432,6 +454,29 @@ class CouchDB_HandleDBs extends CLI
         $this->detailDB($url, $username, $password, $database);
         $this->detailDBShards($url, $username, $password, $database);
         $this->detailDBPermissions($url, $username, $password, $database);
+    }
+
+
+
+    protected function compactDB($url, $username, $password, $database) {
+        $this->info('Requiring compaction for db '.$database.' on '.$url);
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+        $status = $CouchDB_C->compactDB($database);
+
+        if ($status === true) {
+            $this->success('Compaction for '.$database.' queued');
+        } else {
+            if (is_string($status)) {
+                $this->error($status);
+                return false;
+            } else {
+                $this->error('Unknown error compacting database');
+                return false;
+            }
+        }
+
+        echo PHP_EOL;
+        return true;
     }
 
 
