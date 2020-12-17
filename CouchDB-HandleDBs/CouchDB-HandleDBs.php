@@ -54,6 +54,9 @@ class CouchDB_HandleDBs extends CLI
         $options->registerCommand('delete-db',    'Deletes a DB');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'delete-db');
 
+        $options->registerCommand('purge-db',     'Purges all tombstones from a DB');
+        $options->registerOption('database',      'Database to operate on',  null, 'database',      'purge-db');
+
         $options->registerCommand('create-db',    'Creates a DB');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'create-db');
         $options->registerOption('grant-admin',   'Database Admin Grants',   null, 'grant-admin',   'create-db');
@@ -77,7 +80,8 @@ class CouchDB_HandleDBs extends CLI
         $options->registerOption('source',      'Source node',  null, 'source',      'migrate-db');
         $options->registerOption('destination',      'Destination nodes separated by commas',  null, 'destination',      'migrate-db');
         $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'migrate-db');
-        $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'migrate-db');        
+        $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'migrate-db');
+
     }
 
     // implement your code
@@ -177,6 +181,14 @@ class CouchDB_HandleDBs extends CLI
                         $this->error('No target database specified (--database)');
                     } else {
                         $this->deleteDB($url, $username, $password, $database);
+                    }
+                    break;
+                case 'purge-db':
+                    $database = trim($options->getOpt('database'));
+                    if (!is_string($database) OR strlen($database) == 0) {
+                        $this->error('No target database specified (--database)');
+                    } else {
+                        $this->purgeDB($url, $username, $password, $database);
                     }
                     break;
                 case 'grant-db':
@@ -798,6 +810,49 @@ class CouchDB_HandleDBs extends CLI
         }
 
     }
+
+
+
+    /** Function to purge all tombstones from a remote database **/
+    protected function purgeDB($url, $username, $password, $database) {
+
+        $this->pingHost($url, $username, $password);
+
+        $this->info('Purging tombstones from database database '.$database.' on '.$url);
+
+        $this->detailDB($url, $username, $password, $database);
+
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+
+        $this->alert("Proceed with purge? (yes/no): ");
+        $answer = fread(STDIN, 80);
+        if (trim(strtolower($answer)) == "yes") {
+
+            do {
+
+                $deletedDocs = $CouchDB_C->getDeletedDocs($database);
+
+                if ($deletedDocs === false) {
+                    return false;
+                }
+
+                $this->info("Found ".count($deletedDocs)." deleted documents. Purging them:");
+
+                foreach ($deletedDocs as $eachDeletedDoc) {
+                    $this->info('Purging '.$eachDeletedDoc->id.' revision '.$eachDeletedDoc->changes[0]->rev.' from database '.$database);
+                    if ($CouchDB_C->purgeDoc($database, $eachDeletedDoc->id, $eachDeletedDoc->changes[0]->rev) === false)
+                        return false;
+                }
+
+            } while (count($deletedDocs) > 0);
+
+        } else {
+            $this->error('Operation cancelled');
+            return false;
+        }
+
+    }
+
 
 
     /** Function to create a database on a remote server **/

@@ -329,6 +329,64 @@ class CouchDB_Connector {
 
 		return $response->body->all_nodes;
 
+	}
+
+	/** Operations on "Changes" feed for a single database **/
+	function getDeletedDocs($database, $limit = 25) {
+
+		$startSeq = "";
+		$deletedDocs = array();
+
+		while (count($deletedDocs) < $limit) {
+			if ($startSeq != "") {
+				$start = "&since=".$startSeq;
+			} else {
+				$start = "";
+			}
+			$response = \Httpful\Request::get($this->CouchURL.$database."/_changes?limit=".$limit.$start)->send();
+
+			if (! isset($response->body->results)) {
+				return false;
+			}
+
+			foreach ($response->body->results as $eachResult) {
+
+				if ($eachResult->deleted == 1) {
+//					echo "Deleted: ".$eachResult->id.PHP_EOL;
+					$deletedDocs[] = $eachResult;
+				} else {
+//					echo "Not deleted: ".$eachResult->id.PHP_EOL;
+				}
+
+				if (count($deletedDocs) == $limit) break;
+
+				$startSeq = $eachResult->seq;
+
+			}
+
+		}
+
+		return $deletedDocs;
+
+	}
+
+	/** Operations on single documents **/
+	function purgeDoc($database, $docId, $docRev) {
+
+		$docPurge = new stdclass();
+		$docPurge->$docId = array();
+		$docPurge->$docId[] = $docRev;
+
+		$response = \Httpful\Request::post($this->CouchURL.$database."/_purge")
+									->sendsJson()
+									->body($docPurge)
+									->send();
+
+		if (! isset($response->body->purged) OR (! isset($response->body->purged->$docId))) {
+			return false;
+		} else {
+			return true;
+		}
 
 	}
 
