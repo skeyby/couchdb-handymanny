@@ -332,17 +332,20 @@ class CouchDB_Connector {
 	}
 
 	/** Operations on "Changes" feed for a single database **/
-	function getDeletedDocs($database, $limit = 25) {
+	function getDeletedDocs($database, $limit = 250) {
 
 		$startSeq = "";
 		$deletedDocs = array();
+		$batchSize = $limit;
 
-		while (count($deletedDocs) < $limit) {
+		while (count($deletedDocs) < $batchSize) {
 			if ($startSeq != "") {
 				$start = "&since=".$startSeq;
 			} else {
 				$start = "";
 			}
+
+			echo $this->CouchURL.$database."/_changes?limit=".$limit.$start.PHP_EOL;
 			$response = \Httpful\Request::get($this->CouchURL.$database."/_changes?limit=".$limit.$start)->send();
 
 			if (! isset($response->body->results)) {
@@ -351,18 +354,18 @@ class CouchDB_Connector {
 
 			foreach ($response->body->results as $eachResult) {
 
-				if ($eachResult->deleted == 1) {
-//					echo "Deleted: ".$eachResult->id.PHP_EOL;
+				if (isset($eachResult->deleted) && ($eachResult->deleted == 1)) {
 					$deletedDocs[] = $eachResult;
-				} else {
-//					echo "Not deleted: ".$eachResult->id.PHP_EOL;
 				}
 
-				if (count($deletedDocs) == $limit) break;
+				if (count($deletedDocs) == $limit) {
+					break;
+				}
 
 				$startSeq = $eachResult->seq;
-
 			}
+
+		 	$limit = $batchSize - count($deletedDocs);
 
 		}
 
