@@ -75,12 +75,15 @@ class CouchDB_HandleDBs extends CLI
         $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'rebalance-db');
         $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'rebalance-db');
         
-        $options->registerCommand('migrate-db', 'Migrate a DB from a source to a destination set');
+        $options->registerCommand('migrate-db',   'Migrate a DB from a source to a destination set');
         $options->registerOption('database',      'Database to operate on',  null, 'database',      'migrate-db');
-        $options->registerOption('source',      'Source node',  null, 'source',      'migrate-db');
-        $options->registerOption('destination',      'Destination nodes separated by commas',  null, 'destination',      'migrate-db');
+        $options->registerOption('source',        'Source node',  null, 'source',      'migrate-db');
+        $options->registerOption('destination',   'Destination nodes separated by commas',  null, 'destination',      'migrate-db');
         $options->registerOption('all-databases', 'Iterate on all databases on the server',  null, false, 'migrate-db');
         $options->registerOption('start-db',      'First db to iterate', null, 'start-db', 'migrate-db');
+
+        $options->registerCommand('details-user', 'Get informations about an user');
+        $options->registerOption('user',          'User to operate on',  null, 'user',      'details-user');
 
     }
 
@@ -276,6 +279,14 @@ class CouchDB_HandleDBs extends CLI
                         }, $startDB);
                     } else {
                         $this->migrateDB($url, $username, $password, $database, $source, $destination);
+                    }
+                    break;
+                case 'details-user':
+                    $user = trim($options->getOpt('user'));
+                    if (!is_string($user) OR strlen($user) == 0) {
+                        $this->error('No target user specified (--user)');
+                    } else {
+                        $this->detailsUser($url, $username, $password, $user);
                     }
                     break;                    
                 default:
@@ -1293,6 +1304,73 @@ class CouchDB_HandleDBs extends CLI
         $this->rebalanceDB($url, $username, $password, $database);
 
     }
+
+
+    protected function detailsUser($url, $username, $password, $user) {
+
+        $this->info('Retrieving details about user '.$user.' on '.$url);
+
+        $CouchDB_C = new CouchDB_Connector($url, $username, $password);
+        $status = $CouchDB_C->getUser($user);
+
+        print_r($status);
+
+        if (is_object($status)) {
+
+            echo PHP_EOL;
+            $tf = new TableFormatter($this->colors);
+            $tf->setBorder(' | '); // nice border between colmns
+
+            echo $tf->format(
+                array('40%', '*'),
+                array('Property', 'Name')
+            );
+
+            echo str_pad('', $tf->getMaxWidth(), '-') . "\n";            
+
+            $Table = array();
+            $Table["User Name"] = $status->name;
+            $Table["User ID"] = $status->_id;
+            $Table["User Rev"] = $status->_rev;
+            $Table["Password Scheme"] = isset($status->password_scheme) ? $status->password_scheme : "UNKNOWN";
+            $Table["Password Salt"] = isset($status->salt) ? $status->salt : "UNKNOWN";
+            $Table["Password Iterations"] = isset($status->iterations) ? $status->iterations : "UNKNOWN";
+            $Table["Encrypted Password"] = isset($status->derived_key) ? $status->derived_key : "UNKNOWN";
+
+            if (isset($status->roles) && is_array($status->roles)) {
+                if (count($status->roles) > 0) {
+                    $RoleCounter = 1;
+                    foreach ($status->roles as $eachRole) {
+                        $Table["Role #".$RoleCounter] = $eachRole;
+                    }
+                } else {
+                    $Table["Roles"] = "No custom roles applied";
+                }
+            }
+
+            foreach ($Table as $Key => $Value) {
+                echo $tf->format(
+                    array('40%', '*'),
+                    array($Key, $Value),
+                    array(Colors::C_CYAN, Colors::C_GREEN)
+                );
+            } 
+        } else {
+            if (is_string($status)) {
+                $this->error($status);
+                return false;
+            } else {
+                $this->error('Unknown error retrieving user informations');
+                return false;
+            }
+        }
+
+        echo PHP_EOL;
+
+        return $status;
+
+    }
+
 
 }
 

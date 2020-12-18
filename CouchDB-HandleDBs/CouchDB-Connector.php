@@ -331,6 +331,41 @@ class CouchDB_Connector {
 
 	}
 
+
+	/** Operations on Users **/
+	function getUser($username) {
+
+		if (trim($username) == "")
+			return false;
+
+		$response = \Httpful\Request::get($this->CouchURL."/_users/org.couchdb.user:".$username)->send();
+
+		if (! isset($response->body->name) OR
+			! isset($response->body->type) OR
+			($response->body->type != "user")) {
+			return false;
+		}
+
+		return $response->body;
+
+	}
+
+
+	function createUser($username, $password) {
+
+	}
+
+
+	function getRolesForUser($username) {
+
+	}
+
+
+	function addRoleToUser($username, $role) {
+
+	}
+
+
 	/** Operations on "Changes" feed for a single database **/
 	function getDeletedDocs($database, $limit = 250) {
 
